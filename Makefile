@@ -87,6 +87,7 @@ flash: stenosaurus.bin
 
 clean:
 	$(Q)rm -f *.o
+	$(Q)rm -f *.d
 	$(Q)rm -f *.elf
 	$(Q)rm -f *.bin
 

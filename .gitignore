@@ -16,3 +16,9 @@
 *.exe
 *.out
 *.app
+
+*.elf
+*.bin
+*.d
+
+.DS_Store
