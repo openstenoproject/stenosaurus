@@ -31,7 +31,7 @@ OPENCM3_DIR = libopencm3
 ARCH_FLAGS = -mthumb -mcpu=cortex-m3 -msoft-float
 CFLAGS += -Os -g \
           -Wall -Wextra -Wimplicit-function-declaration \
-          -Wredundant-decls -Wmissing-prototypes -Wstrict-prototypes \
+          -Wredundant-decls -Wstrict-prototypes \
           -Wundef -Wshadow \
           -I$(TOOLCHAIN_DIR)/include \
           -fno-common $(ARCH_FLAGS) -MD -DSTM32F1 \
