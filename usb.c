@@ -217,21 +217,11 @@ static int cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *
   return 0;
 }
 
-#define SERIAL_SEND_BUFFER_SIZE 20;
-uint8_t serial_send_buffer[20];
-int serial_send_buffer_end;
-
-static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
-{
-  (void)usbd_dev;
-  (void)ep;
-}
-
 static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue)
 {
   (void)wValue;
   
-  usbd_ep_setup(usbd_dev, 0x01, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_rx_cb);
+  usbd_ep_setup(usbd_dev, 0x01, USB_ENDPOINT_ATTR_BULK, 64, NULL);
   usbd_ep_setup(usbd_dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, NULL);
   usbd_ep_setup(usbd_dev, 0x83, USB_ENDPOINT_ATTR_INTERRUPT, 16, NULL);
 
@@ -240,12 +230,7 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue)
 
 usbd_device *usbd_dev;
 void init_usb(void) {
-    serial_send_buffer_end = 0;
-  
     // Requires that the clock be set already.
-    usbd_dev = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings, 3, usbd_control_buffer, sizeof(usbd_control_buffer));
-    usbd_register_set_config_callback(usbd_dev, cdcacm_set_config);
-    
     usbd_dev = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings, 3, usbd_control_buffer, sizeof(usbd_control_buffer));
     usbd_register_set_config_callback(usbd_dev, cdcacm_set_config);
 }
@@ -254,6 +239,6 @@ void poll_usb(void) {
   usbd_poll(usbd_dev);
 }
 
-void serial_usb_send_data(uint8_t *buf, int len) {
+void serial_usb_send_data(void *buf, int len) {
     usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
 }

@@ -85,7 +85,7 @@ void make_packet(uint32_t s, packet *p) {
         p->byte[(p->length)++] = (page | 0b10000000);
     }
     
-    // Page 5: 110#ZDST
+    // Page 4: 110#ZDST
     page = get_final_t_stroke(s) |
            get_final_s_stroke(s) << 1 |
            get_final_d_stroke(s) << 2 |
@@ -94,4 +94,9 @@ void make_packet(uint32_t s, packet *p) {
     if (page) {
         p->byte[(p->length)++] = (page | 0b11000000);
     }
+    p->byte[(p->length)++] = 0;
+    // For now null out all the bytes. It makes debugging slightly easier.
+    for (int i = p->length; i < 5; ++i) {
+        p->byte[i] = 0;
+     }
 }

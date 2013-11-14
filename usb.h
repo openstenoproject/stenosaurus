@@ -28,4 +28,4 @@ void init_usb(void);
 void poll_usb(void);
 
 // Send some data via the USB serial link
-void serial_usb_send_data(uint8_t *buf, int len);
+void serial_usb_send_data(void *buf, int len);

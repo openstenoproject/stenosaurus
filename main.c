@@ -90,16 +90,14 @@ int main(void) {
     init_usb();
     
     packet txbolt_packet;
-    (void)txbolt_packet;
     
     while (1) {
         if (is_button_pressed()) {
             toggle_led();
             uint32_t stroke = string_to_stroke("SAT");
-            (void)stroke;
             make_packet(stroke, &txbolt_packet);
-            serial_usb_send_data((uint8_t*)txbolt_packet.byte, txbolt_packet.length);
-                toggle_led();
+            serial_usb_send_data(&txbolt_packet.byte[0], txbolt_packet.length);
+            toggle_led();
         }
         
         poll_usb();
