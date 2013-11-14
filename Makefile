@@ -29,19 +29,17 @@ TOOLCHAIN_DIR := $(shell dirname `which $(CC)`)/../$(PREFIX)
 OPENCM3_DIR = libopencm3
 
 ARCH_FLAGS = -mthumb -mcpu=cortex-m3 -msoft-float
-CFLAGS += -Os -g \
+CFLAGS += -Os -g -std=c99 \
           -Wall -Wextra -Wimplicit-function-declaration \
-          -Wredundant-decls -Wmissing-prototypes -Wstrict-prototypes \
+          -Wredundant-decls -Wstrict-prototypes \
           -Wundef -Wshadow \
-          -I$(TOOLCHAIN_DIR)/include \
           -fno-common $(ARCH_FLAGS) -MD -DSTM32F1 \
           -I$(OPENCM3_DIR)/include
 LDSCRIPT = STM32F103RCT6.ld
 LDFLAGS += --static -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group \
-           -L$(TOOLCHAIN_DIR)/lib -L$(OPENCM3_DIR)/lib/stm32/f1\
            -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections \
            $(ARCH_FLAGS) -mfix-cortex-m3-ldrd \
-           -L$(OPENCM3_DIR)/lib -L$(OPENCM3_DIR)/lib/stm32/f1
+           -L$(OPENCM3_DIR)/lib 
 
 # Be silent by default, but 'make V=1' will show all compiler calls.
 ifneq ($(V),1)
