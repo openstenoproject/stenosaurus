@@ -23,7 +23,7 @@
 
 
 uint32_t string_to_stroke(const char* s) {
-    bool initial = false;
+    bool initial = true;
     uint32_t stroke = 0;
     while (*s != 0) {
         switch (*s) {
