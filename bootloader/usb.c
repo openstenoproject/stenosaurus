@@ -29,8 +29,8 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/hid.h>
 #include <libopencm3/cm3/nvic.h>
-#include "leds.h"
 #include "usb.h"
+#include "leds.h"
 
 static const struct usb_device_descriptor device_descriptor = {
   // The size of this header in bytes, 18.
@@ -70,7 +70,6 @@ static const struct usb_device_descriptor device_descriptor = {
   .bNumConfigurations = 1,
 };
 
-// TODO: can endpoint 1 be used for both in and out or does it have to have different numbers?
 static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
   {
     // The size of the endpoint descriptor in bytes: 7.
@@ -104,8 +103,8 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
     // Bit 7 indicates direction: 0 for OUT (to device) 1 for IN (to host).
     // Bits 6-4 must be set to 0.
     // Bits 3-0 indicate the endpoint number (zero is not allowed).
-    // Here we define the OUT side of endpoint 2.
-    .bEndpointAddress = 0x02,
+    // Here we define the OUT side of endpoint 1.
+    .bEndpointAddress = 0x01,
     // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
     // Bit 1-0: Indicates the mode of this endpoint.
     // 00: Control
@@ -126,7 +125,7 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
 // indicates the number of bytes that follow in the lower two bits. The next two 
 // bits indicate the type of the item. The remaining four bits indicate the tag.
 // Words are stored in little endian.
-// TODO: Understand this better.
+// TODO: Understand this better. Maybe use the definition from rawhid?
 static const uint8_t hid_report_descriptor[] = {
   // Usage Page = 0xFF00 (Vendor Defined Page 1)
   0x06, 0x00, 0xFF,
@@ -285,9 +284,9 @@ static int control_request_handler(usbd_device *dev,
     // - device to host
     // - A standard request
     // - recipient is an interface
-    // Note: This is already checked by the way this callback is registered.
-    if ((req->bmRequestType == (USB_REQ_TYPE_IN | USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE)) &&
-        // - GetDescriptor
+    // Note: This function is only registered for 
+    // USB_REQ_TYPE_IN | USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE
+    if (// - GetDescriptor
         (req->bRequest == USB_REQ_GET_DESCRIPTOR) &&
         // - High byte: Descriptor type is HID report (0x22)
         // - Low byte: Index 0
@@ -301,26 +300,15 @@ static int control_request_handler(usbd_device *dev,
     return USBD_REQ_NOTSUPP;
 }
 
-static uint8_t hid_rx_buffer[64];
-//static uint8_t hid_tx_buffer[64];
+static void (*packet_handler)(uint8_t*, uint8_t);
+static uint8_t hid_buffer[64];
 
-static void endpoint_rx_callback(usbd_device *usbd_dev, uint8_t ep) {
-    uint16_t bytes_read = usbd_ep_read_packet(usbd_dev, ep, hid_rx_buffer, sizeof(hid_rx_buffer));
-    (void)bytes_read;
-    led_toggle(0);
-    if (hid_rx_buffer[0]) {
-        led_toggle(1);
-    }
-    if (hid_rx_buffer[1]) {
-        led_toggle(2);
-    }
-    usb_send_data();
-}
-
-static void endpoint_tx_callback(usbd_device *usbd_dev, uint8_t ep) {
-    (void)usbd_dev;
-    (void)ep;
-    led_toggle(2);
+static void endpoint_callback(usbd_device *usbd_dev, uint8_t ep) {
+    uint16_t bytes_read = usbd_ep_read_packet(usbd_dev, ep, hid_buffer, sizeof(hid_buffer));
+    // This function reads the packet and replaces it with the response buffer.
+    packet_handler(hid_buffer, bytes_read);
+    // If we don't send the whole buffer then hidapi doesn't read the report. Not sure why.
+    usbd_ep_write_packet(usbd_dev, 0x81, hid_buffer, sizeof(hid_buffer));
 }
 
 // The device is not configured for its function until the host chooses a 
@@ -335,9 +323,9 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
     // The address argument uses the MSB to indicate whether data is going in to
     // the host or out to the device (0 for out, 1 for in). 
     // Set up endpoint 1 for data going IN to the host.
-    usbd_ep_setup(dev, 0x81, USB_ENDPOINT_ATTR_INTERRUPT, 64, endpoint_tx_callback);
-    // Set up endpoint 2 for data coming OUT from the host.
-    usbd_ep_setup(dev, 0x2, USB_ENDPOINT_ATTR_INTERRUPT, 64, endpoint_rx_callback);
+    usbd_ep_setup(dev, 0x81, USB_ENDPOINT_ATTR_INTERRUPT, 64, NULL);
+    // Set up endpoint 1 for data coming OUT from the host.
+    usbd_ep_setup(dev, 0x01, USB_ENDPOINT_ATTR_INTERRUPT, 64, endpoint_callback);
 
     // The callback is registered for requests that are:
     // - device to host
@@ -361,7 +349,8 @@ static uint8_t usbd_control_buffer[128];
 static usbd_device *usbd_dev;
 
 // TODO: The driver should simply be chosen by the same variable as everything else.
-void init_usb(void) {
+void init_usb(void (*handler)(uint8_t*, uint8_t)) {
+    packet_handler = handler;
     usbd_dev = usbd_init(&stm32f103_usb_driver, &device_descriptor, 
                          &config_descriptor, usb_strings, sizeof(usb_strings), 
                          usbd_control_buffer, sizeof(usbd_control_buffer));
@@ -369,17 +358,9 @@ void init_usb(void) {
     nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
 }
 
-void usb_send_data(void) {
-    char s[64];
-    s[0] = 'h';
-    s[1] = 'e';
-    s[2] = 'l';
-    uint16_t bytes_written = usbd_ep_write_packet(usbd_dev, 0x81, s, sizeof(s));
-    if (bytes_written == sizeof(s)) {
-        led_toggle(3);
-    }
-}
-
-void usb_lp_can_rx0_isr(void) {
+// This is the interrupt handler for low priority USB events. Implementing
+// a function with this name makes it the function used for the interrupt.
+// TODO: Handle the other USB interrupts.
+void usb_lp_can_rx0_isr(void) {  
     usbd_poll(usbd_dev);
 }

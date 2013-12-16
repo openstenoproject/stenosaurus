@@ -35,6 +35,7 @@
 #include "usb.h"
 #include "user_button.h"
 #include "leds.h"
+#include "protocol.h"
 
 int main(void) {
     // Set the clock to use the 8Mhz internal high speed (hsi) clock as input 
@@ -43,19 +44,24 @@ int main(void) {
     // But in the examples we see HSI used with USB and it also seems to work.
     rcc_clock_setup_in_hsi_out_48mhz();
     
-    rcc_peripheral_enable_clock(&RCC_APB2ENR, RCC_APB2ENR_AFIOEN);
-    AFIO_MAPR |= AFIO_MAPR_SWJ_CFG_JTAG_OFF_SW_ON;
+    rcc_peripheral_enable_clock(&RCC_AHBENR, RCC_AHBENR_CRCEN);
     
     setup_user_button();
     setup_leds();
     
-    init_usb();
+    init_usb(packet_handler);
     
     // Tell the chip that when it returns from an interrupt it should go to sleep.
     SCB_SCR |= SCB_SCR_SLEEPONEXIT;
     // Then go to sleep.
-    __WFI();
-    // never returns
+    while (true) {
+        // In theory this should never return since we set SLEEPONEXIT. However,
+        // the documentation states there can be spurious events that wake the
+        // device and that this must be handled.
+        __WFI();
+        // TODO: Consider using WFE + SEVONPEND and call pollusb in a loop. This
+        // would be event faster since it avoid interrupts.
+    }
     // TODO: Investigate the right way to put the processor to sleep and the 
     // various sleep modes to find out which is the right one here.
 }
