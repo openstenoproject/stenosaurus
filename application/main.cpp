@@ -1,3 +1,4 @@
+#include <string.h>
 #include <stdio.h>
 #include <wchar.h>
 #include <string.h>
@@ -21,18 +22,90 @@ void sleep(int miliseconds) {
 
 #define UNUSED(x) (void)(x)
 
-int send_receive(hid_device *handle, unsigned char *buf, int buf_size) {
-    int res = hid_write(handle, buf, buf_size + 1);
+static const int STENOSAURUS_VID = 0x6666;
+static const int STENOSAURUS_PID = 1;
+
+static const uint8_t PACKET_SIZE = 64;
+
+static const int REQUEST_INFO = 1;
+static const int REQUEST_ERASE_PROGRAM = 2;
+static const int REQUEST_FLASH_PROGRAM = 3;
+static const int REQUEST_VERIFY_PROGRAM = 4;
+static const int REQUEST_BOOTLOADER = 5;
+static const int REQUEST_RESET = 6;
+static const int REQUEST_DEBUG = 9;
+
+static const uint8_t RESPONSE_OK = 1;
+static const uint8_t RESPONSE_ERROR = 2;
+
+void mypause(void) {
+    printf("Press enter to continue ");
+    char junk[2];
+    fgets(junk, 2, stdin);
+}
+
+void write_word(uint8_t *packet, uint32_t word) {
+    packet[0] = word & 0xFF;
+    packet[1] = (word >> 8) & 0xFF;
+    packet[2] = (word >> 16) & 0xFF;
+    packet[3] = (word >> 24) & 0xFF;
+}
+
+void make_verify_packet(uint8_t *packet, uint32_t program_size) {
+    packet[0] = REQUEST_VERIFY_PROGRAM;
+    write_word(packet + 1, program_size);
+    memset(packet + 5, 0, PACKET_SIZE - 5);
+}
+
+void make_debug_packet(uint8_t *packet, uint32_t param) {
+    packet[0] = REQUEST_DEBUG;
+    write_word(packet + 1, param);
+    memset(packet + 5, 0, PACKET_SIZE - 5);
+}
+
+bool send_receive(hid_device *handle, unsigned char * const packet) {
+    uint8_t buf[PACKET_SIZE + 1];
+    buf[0] = 0;
+    memcpy(buf + 1, packet, PACKET_SIZE);
+
+    printf("About to send: ");
+    for (int i = 0; i < PACKET_SIZE; ++i) {
+        printf("0x%02X ", packet[i]);
+    }
+    printf("\n");
+
+    int res = hid_write(handle, buf, PACKET_SIZE + 1);
     if (res < 0) {
         printf("Failed to send.\n");
-        return -1;
+        return false;
     }
-    res = hid_read_timeout(handle, buf, buf_size,  10 * 1000);
+    //res = hid_read_timeout(handle, packet, PACKET_SIZE,  30 * 1000);
+    hid_read(handle, packet, PACKET_SIZE);
     if (res <= 0) {
         printf("failed to receive.\n");
-        return -1;
+        return false;
     }
-    return res;
+
+    printf("Data: ");
+    for (int i = 0; i < PACKET_SIZE; ++i) {
+        printf("0x%02X ", packet[i]);
+    }
+    printf("\n");
+
+    bool result = false;
+
+    if (packet[0] == 1) {
+        printf("Success response\n");
+        result = true;
+    } else if (packet[0] == 2) {
+        printf("Error response\n");
+        result = false;
+    } else {
+        printf("Unknown response\n");
+        result = false;
+    }
+
+    return result;
 }
 
 // This algorithm is described by the Rocksoft^TM Model CRC Algorithm as follows:
@@ -49,7 +122,7 @@ static const uint32_t CRC_TABLE[16] = { // Nibble lookup table for 0x04C11DB7 po
 0x00000000,0x04C11DB7,0x09823B6E,0x0D4326D9,0x130476DC,0x17C56B6B,0x1A864DB2,0x1E475005,
 0x2608EDB8,0x22C9F00F,0x2F8AD6D6,0x2B4BCB61,0x350C9B64,0x31CD86D3,0x3C8EA00A,0x384FBDBD };
 
-uint32_t compute_crc(uint8_t *buf, uint32_t size) {
+uint32_t compute_crc(const uint8_t * buf, uint32_t size) {
     uint32_t result = 0xFFFFFFFF;
     size = size >> 2; // /4
 
@@ -72,68 +145,185 @@ uint32_t compute_crc(uint8_t *buf, uint32_t size) {
     return(result);
 }
 
+bool flash_program(const char  * const filename) {
+    int res;
+    hid_device *handle;
+    uint8_t *b, *p;
+
+    FILE *fp = fopen(filename, "rb");
+    if (fp == NULL) {
+        printf("Could not open file: %s\n", filename);
+        return false;
+    }
+
+    #define PROGRAM_MEMORY_SIZE ((256 - 8) * 1024)
+    #define MAX_PROGRAM_SIZE (PROGRAM_MEMORY_SIZE - 3 * 4)
+
+    uint8_t program_buffer[PROGRAM_MEMORY_SIZE];
+    memset(program_buffer, 0xFF, PROGRAM_MEMORY_SIZE);
+    size_t bytes_read = fread(program_buffer, 1, MAX_PROGRAM_SIZE, fp);
+
+    if (!feof(fp)) {
+        printf("File is bigger than max program size (%u): %s\n", MAX_PROGRAM_SIZE, filename);
+        fclose(fp);
+        return false;
+    }
+    fclose(fp);
+
+    uint32_t padding_bytes = (4 - (bytes_read % 4)) % 4;
+
+    uint32_t program_length = (bytes_read + padding_bytes) / 4;
+    uint32_t program_crc = compute_crc(program_buffer, program_length * 4);
+
+    b = program_buffer + bytes_read + padding_bytes;
+
+    write_word(b, program_length);
+    write_word(b + 4, program_crc);
+    write_word(b + 8, 0);
+
+    uint32_t words_to_write = program_length + 3;
+    uint32_t full_crc = compute_crc(program_buffer, PROGRAM_MEMORY_SIZE);
+
+    #undef MAX_PROGRAM_SIZE
+
+    uint8_t packet[PACKET_SIZE];
+
+    // Sequence:
+    // Get info to make sure we're talking to the right thing.?
+    // Send bootloader request. A one means we are in the bootloader. A zero means we are going to boot into the bootloader so wait and try again.
+    // Send erase.
+    // send many flash instructions to populate the program
+    // call verify on the whole flash
+    // reset
+    // if there are any errors, report error, try again?
+
+    // Get into bootloader mode.
+    int attempts = 5;
+    while (true) {
+        handle = hid_open(STENOSAURUS_VID, STENOSAURUS_PID, NULL);
+        if (handle == 0) {
+            printf("Could not find device.\n");
+            if (--attempts == 0) break;
+            sleep(1000);
+        } else {
+            memset(packet, 0, PACKET_SIZE);
+            packet[0] = REQUEST_BOOTLOADER;
+            if (!send_receive(handle, packet)) {
+                printf("Failed to communicated with device.\n");
+            }
+            if (packet[1] != 1) {
+                printf("Device is not in bootloader mode.\n");
+            }
+            if (res >= 0 && packet[1] == 1) {
+                break;
+            } else {
+                hid_close(handle);
+                handle = 0;
+                if (--attempts == 0) break;
+                sleep(1000);
+            }
+        }
+    }
+
+    if (handle == 0) {
+        printf("Could not enter bootloader mode.\n");
+        return false;
+    }
+
+    // Erase current program.
+    memset(packet, 0, PACKET_SIZE);
+    packet[0] = REQUEST_ERASE_PROGRAM;
+    if (!send_receive(handle, packet)) {
+        printf("Could not erase program.\n");
+        return false;
+    }
+
+    // Flash program
+    uint32_t address = 0;
+    b = program_buffer;
+    while (words_to_write > 0) {
+        memset(packet, 0, PACKET_SIZE);
+        packet[0] = REQUEST_FLASH_PROGRAM;
+
+        write_word(packet + 2, address);
+
+        int words_written = 0;
+        int words_left = (PACKET_SIZE - 6) / 4;
+
+        p = packet + 6;
+
+        while (words_to_write != 0 && words_left != 0) {
+            *p++ = *b++;
+            *p++ = *b++;
+            *p++ = *b++;
+            *p++ = *b++;
+
+            --words_left;
+            --words_to_write;
+            ++words_written;
+            address += 4;
+        }
+
+        packet[1] = words_written;
+
+        if (!send_receive(handle, packet)) {
+            printf("Could not flash program at address %u\n", address - words_written);
+            return false;
+        }
+    }
+
+    // verify
+    make_verify_packet(packet, PROGRAM_MEMORY_SIZE / 4);
+    if (!send_receive(handle, packet)) {
+        printf("Failed to send verify request.\n");
+        return false;
+    }
+    uint32_t received_crc = packet[1] | (packet[2] << 8) | (packet[3] << 16) | (packet[4] << 24);
+    if (received_crc != full_crc) {
+        printf("CRC mismatch. Actual: %u, Received: %u\n", full_crc, received_crc);
+        return false;
+    }
+
+    // reset
+    memset(packet, 0, PACKET_SIZE);
+    packet[0] = REQUEST_RESET;
+    if (!send_receive(handle, packet)) {
+        // Hmm... failure to reset shouldn't necessarily be a failure to flash.
+        printf("Could not reset.\n");
+        return false;
+    }
+
+    return true;
+
+#undef PROGRAM_MEMORY_SIZE
+}
+
 int main(int argc, char* argv[])
 {
     UNUSED(argc);
     UNUSED(argv);
 
     int res;
-    unsigned char buf[65];
-    #define MAX_STR 255
-    wchar_t wstr[MAX_STR];
-    hid_device *handle;
+
+    int result = -1;
 
     if (hid_init()) {
         printf("Failed to init hidapi.");
         return -1;
     }
 
-    // Open the device using the VID, PID,
-    // and optionally the Serial number.
-    ////handle = hid_open(0x4d8, 0x3f, L"12345");
-    handle = hid_open(0x6666, 1, NULL);
-    if (!handle) {
-        printf("unable to open device\n");
-        return -2;
+    if (argc == 3 && strcmp(argv[1], "flash") == 0) {
+        if (flash_program(argv[2])) {
+            printf("Successfully flashed program: %s\n", argv[2]);
+            result = 0;
+        } else {
+            printf("Failed to flash program: %s\n", argv[2]);
+            result = -1;
+        }
+    } else {
+        printf("Usage: %s flash <path/to/program.bin>\n", argv[0]);
+        result = -1;
     }
-
-    buf[0] = 0; // HID report id.
-    buf[1] = 4; // action verify
-    buf[2] = 1; // num words
-    buf[3] = 0; // address 0
-    buf[4] = 0; // 1
-    buf[5] = 0; // 2
-    buf[6] = 0; // 3
-    buf[7] = 0; // word 0
-    buf[8] = 0; // 1
-    buf[9] = 0; // 2
-    buf[10] = 0; // 3
-    res = send_receive(handle, buf, 64);
-    if (res < 0) {
-        printf("Failed to send_receive.\n");
-    }
-
-    if (buf[0] == 1) {
-        printf("Success\n");
-    } else if (buf[0] == 2) {
-        printf("Error\n");
-    }
-
-    printf("Data: ");
-    for (int i = 0; i < 64; ++i) {
-        printf("0x%02X ", buf[i]);
-    }
-    printf("\n");
-
-    uint32_t crc = buf[1] | (buf[2] << 8) | (buf[3] << 16) | (buf[4] << 24);
-    printf("board crc: 0x%08x\n", crc);
-
-    uint8_t data[] = {0, 0, 0, 0};
-    uint32_t my_crc = compute_crc(data, 4);
-    printf("my crc: 0x%08x\n", my_crc);
-
-
-    hid_close(handle);
 
     /* Free static HIDAPI objects. */
     hid_exit();
@@ -142,5 +332,5 @@ int main(int argc, char* argv[])
     system("pause");
 #endif
 
-    return 0;
+    return result;
 }

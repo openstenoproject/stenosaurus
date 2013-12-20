@@ -27,7 +27,7 @@ TOOLCHAIN_DIR := $(shell dirname `which $(CC)`)/../$(PREFIX)
 OPENCM3_DIR := $(shell dirname $(lastword $(MAKEFILE_LIST)))/libopencm3
 
 ARCH_FLAGS := -mthumb -mcpu=cortex-m3 -msoft-float
-ALL_CFLAGS := -Os -g -std=c99 \
+ALL_CFLAGS := -Os -g -std=gnu99 \
               -Wall -Wextra -Wimplicit-function-declaration \
               -Wredundant-decls -Wstrict-prototypes \
               -Wundef -Wshadow \
@@ -37,8 +37,6 @@ ALL_LDFLAGS := -lopencm3_stm32f1 --static -Wl,--start-group -lc -lgcc -lnosys -W
                -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections \
                $(ARCH_FLAGS) -mfix-cortex-m3-ldrd \
                -L$(OPENCM3_DIR)/lib $(LDFLAGS)
-
-OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
 
 .libopencm3_built:
 	@if [ ! "`ls -A $(OPENCM3_DIR)`" ] ; then \

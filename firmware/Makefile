@@ -15,17 +15,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this library.  If not, see <http://www.gnu.org/licenses/>.
 #
-# This makefile builds the bootloader for the stenosaurus.
+# This makefile builds the firmware for the stenosaurus.
 
-LDSCRIPT := bootloader.ld
+LDSCRIPT := firmware.ld
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c)) ../common/leds.o ../common/user_button.o
 
-all: bootloader.bin
+all: firmware.bin
 
-flash: bootloader.bin
-	st-flash write $< 0x08000000
-
-.PHONEY: clean flash
+.PHONEY: clean
 
 include ../Makefile.include

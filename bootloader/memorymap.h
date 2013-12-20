@@ -15,18 +15,17 @@
 // You should have received a copy of the GNU General Public License
 // along with this library.  If not, see <http://www.gnu.org/licenses/>.
 //
-// This file defines the USB specific implementation of the bootloader.
-//
-// See the .c file for implementation details.
-//
-// The caller should first call init_usb. Then it should either call poll_usb
-// in a loop or set it as the interrupt handler for low priority USB events.
+// This file defines the layout of flash in the chip.
 
-#ifndef STENOSAURUS_BOOTLOADER_USB_H
-#define STENOSAURUS_BOOTLOADER_USB_H
+#ifndef STENOSAURUS_BOOTLOADER_MEMORYMAP_H
+#define STENOSAURUS_BOOTLOADER_MEMORYMAP_H
 
-#include <stdint.h>
+// The area where the firmware program resides.
+static const uint32_t PROGRAM_AREA_BEGIN = 0x08000000 + 1024 * 8;
+// The size of pages in flash.
+static const uint32_t PROGRAM_PAGE_SIZE = 1024 * 2;
+// The end of the area where the firmware program resides. This address is not
+// valid to read or write.
+static const uint32_t PROGRAM_AREA_END = 0x08000000 + 1024 * 256;
 
-void init_usb(bool (*)(uint8_t*, uint8_t));
-
-#endif // STENOSAURUS_BOOTLOADER_USB_H
+#endif // STENOSAURUS_BOOTLOADER_MEMORYMAP_H
