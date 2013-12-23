@@ -104,9 +104,7 @@ void write_word(uint8_t *packet, uint32_t word) {
 // Must be less than or equal to 61 characters.
 static const char *device_info = "Stenosaurus has no info yet.";
 
-bool packet_handler(uint8_t *packet, uint8_t size) {
-    (void)size;
-
+bool packet_handler(uint8_t *packet) {
     int action = packet[0];
     
     if (action == REQUEST_INFO) {

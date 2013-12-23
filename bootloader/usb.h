@@ -27,6 +27,6 @@
 
 #include <stdint.h>
 
-void init_usb(bool (*)(uint8_t*, uint8_t));
+void init_usb(bool (*)(uint8_t*));
 
 #endif // STENOSAURUS_BOOTLOADER_USB_H
