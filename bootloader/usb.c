@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <libopencm3/stm32/rcc.h>
+#include <libopencm3/stm32/gpio.h>
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/hid.h>
 #include <libopencm3/cm3/nvic.h>
@@ -367,6 +368,13 @@ void init_usb(bool (*handler)(uint8_t*, uint8_t)) {
                          usbd_control_buffer, sizeof(usbd_control_buffer));
     usbd_register_set_config_callback(usbd_dev, set_config_handler);
     nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
+    // Enable USB by raising up D+ via a 1.5K resistor.
+    // This is done on the WaveShare board by removing the USB EN jumper and 
+    // connecting PC0 to the right hand pin of the jumper port with a patch
+    // wire. By setting PC0 to open drain it turns on an NFET which pulls 
+    // up D+ via a 1.5K resistor.
+    gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_OPENDRAIN, 
+                  GPIO0);
 }
 
 // This is the interrupt handler for low priority USB events. Implementing

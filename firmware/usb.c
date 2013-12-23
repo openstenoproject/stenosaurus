@@ -25,6 +25,7 @@
 
 #include <stdlib.h>
 #include <libopencm3/stm32/rcc.h>
+#include <libopencm3/stm32/gpio.h>
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/hid.h>
 #include <libopencm3/cm3/nvic.h>
@@ -41,13 +42,17 @@ static const struct usb_device_descriptor device_descriptor = {
   .bDescriptorType = USB_DT_DEVICE,
   // This device supports USB 2.0
   .bcdUSB = 0x0200,
-  // TODO: Figure out how the next three fields work.
-  // Miscellaneous Device. We will use interfaces and Interface Associations to define the device.
-  .bDeviceClass = 0xEF,
-  // Common Class
-  .bDeviceSubClass = 2,
-  // Interface Association
-  .bDeviceProtocol = 1,
+  // When cereating a multi-function device with more than one interface per 
+  // logical function (as we are doing with the CDC ACM interfaces below) one 
+  // must use Interface Association Descriptors and the next three values must 
+  // be set to the exact values specified. The values have assigned meanings, 
+  // which are mentioned in the comments, but since they must be used when 
+  // using IADs that makes their given definitions meaningless.
+  // See http://www.usb.org/developers/docs/InterfaceAssociationDescriptor_ecn.pdf
+  // and http://www.usb.org/developers/whitepapers/iadclasscode_r10.pdf
+  .bDeviceClass = 0xEF, // Miscellaneous Device.
+  .bDeviceSubClass = 2, // Common Class
+  .bDeviceProtocol = 1, // Interface Association
   // Packet size for endpoint zero in bytes.
   .bMaxPacketSize0 = 64,
   // The id of the vendor (VID) who makes this device. This must be a VID 
@@ -564,7 +569,6 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
                                    USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT, 
                                    // The callback function
                                    cdcacm_control_request_handler);
-
 }
 
 // The buffer used for control requests. This needs to be big enough to hold
@@ -582,6 +586,13 @@ void init_usb(bool (*handler)(uint8_t*, uint8_t)) {
                          usbd_control_buffer, sizeof(usbd_control_buffer));
     usbd_register_set_config_callback(usbd_dev, set_config_handler);
     nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
+    // Enable USB by raising up D+ via a 1.5K resistor.
+    // This is done on the WaveShare board by removing the USB EN jumper and 
+    // connecting PC0 to the right hand pin of the jumper port with a patch
+    // wire. By setting PC0 to open drain it turns on an NFET which pulls 
+    // up D+ via a 1.5K resistor.
+    gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_OPENDRAIN, 
+                  GPIO0);
 }
 
 // This is the interrupt handler for low priority USB events. Implementing
