@@ -25,13 +25,7 @@
 #include "../common/user_button.h"
 #include "../common/leds.h"
 #include "usb.h"
-
-// Echo input
-bool packet_handler(uint8_t* buf, uint8_t len) { 
-    (void)buf;
-    (void)len;
-    return false; 
-}
+#include "protocol.h"
 
 int main(void) {
     // Set the clock to use the 8Mhz internal high speed (hsi) clock as input 

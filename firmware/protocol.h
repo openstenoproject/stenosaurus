@@ -15,18 +15,19 @@
 // You should have received a copy of the GNU General Public License
 // along with this library.  If not, see <http://www.gnu.org/licenses/>.
 //
-// This file defines the USB interface for the firmware.
+// This file defines the communication protocol of the firmware.
 //
 // See the .c file for implementation details.
-//
-// The caller should first call init_usb. Then it should either call poll_usb
-// in a loop or set it as the interrupt handler for low priority USB events.
 
-#ifndef STENOSAURUS_FIRMWARE_USB_H
-#define STENOSAURUS_FIRMWARE_USB_H
+#ifndef STENOSAURUS_FIRMWARE_PROTOCOL_H
+#define STENOSAURUS_FIRMWARE_PROTOCOL_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
-void init_usb(bool (*)(uint8_t*));
+// This function is called when there is a packet from the host. It will do 
+// whatever is requested and will place the response in the same buffer.
+// The buffer must be at least 64 bytes long.
+bool packet_handler(uint8_t *packet);
 
-#endif // STENOSAURUS_FIRMWARE_USB_H
+#endif // STENOSAURUS_FIRMWARE_PROTOCOL_H

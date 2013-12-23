@@ -501,23 +501,20 @@ static int cdcacm_control_request_handler(usbd_device *dev,
   return USBD_REQ_NOTSUPP;
 }
 
-static bool (*packet_handler)(uint8_t*, uint8_t);
+static bool (*packet_handler)(uint8_t*);
 static uint8_t hid_buffer[64];
 
 static void hid_rx_callback(usbd_device *dev, uint8_t ep) {
     uint16_t bytes_read = usbd_ep_read_packet(dev, ep, hid_buffer, sizeof(hid_buffer));
+    (void)bytes_read;
     // This function reads the packet and replaces it with the response buffer.
-    bool reboot = packet_handler(hid_buffer, bytes_read);
+    bool reboot = packet_handler(hid_buffer);
     // If we don't send the whole buffer then hidapi doesn't read the report. Not sure why.
     usbd_ep_write_packet(dev, 0x81, hid_buffer, sizeof(hid_buffer));
     if (reboot) {
         // Wait for the ack to be sent.
         for (volatile int i = 0; i < 800000; ++i);
         scb_reset_system();
-        // TODO: What happens to the state of USB when system is reset?
-        // I'm thinking that it is reset and when an hid request is made the
-        // device stalls so the host reinitializes. This might not work so well
-        // for things like the CDC serial port.
     }
 }
 
@@ -579,7 +576,7 @@ static uint8_t usbd_control_buffer[128];
 static usbd_device *usbd_dev;
 
 // TODO: The driver should simply be chosen by the same variable as everything else.
-void init_usb(bool (*handler)(uint8_t*, uint8_t)) {
+void init_usb(bool (*handler)(uint8_t*)) {
     packet_handler = handler;
     usbd_dev = usbd_init(&stm32f103_usb_driver, &device_descriptor, 
                          &config_descriptor, usb_strings, sizeof(usb_strings), 

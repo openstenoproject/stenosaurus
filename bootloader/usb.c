@@ -316,10 +316,6 @@ static void endpoint_callback(usbd_device *usbd_dev, uint8_t ep) {
         led_toggle(2);
         for (volatile int i = 0; i < 800000; ++i);
         scb_reset_system();
-        // TODO: What happens to the state of USB when system is reset?
-        // I'm thinking that it is reset and when an hid request is made the
-        // device stalls so the host reinitializes. This might not work so well
-        // for things like the CDC serial port.
     }
 }
 
