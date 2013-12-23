@@ -24,6 +24,14 @@
 #include <libopencm3/stm32/crc.h>
 #include "../common/user_button.h"
 #include "../common/leds.h"
+#include "usb.h"
+
+// Echo input
+bool packet_handler(uint8_t* buf, uint8_t len) { 
+    (void)buf;
+    (void)len;
+    return false; 
+}
 
 int main(void) {
     // Set the clock to use the 8Mhz internal high speed (hsi) clock as input 
@@ -35,9 +43,19 @@ int main(void) {
     setup_user_button();
     setup_leds();
 
+    init_usb(packet_handler);
+    
+    // Tell the chip that when it returns from an interrupt it should go to sleep.
+    SCB_SCR |= SCB_SCR_SLEEPONEXIT;
+    // Then go to sleep.
     while (true) {
-        if (is_user_button_pressed()) {
-            led_toggle(2);
-        }
+        // In theory this should never return since we set SLEEPONEXIT. However,
+        // the documentation states there can be spurious events that wake the
+        // device and that this must be handled.
+        __WFI();
+        // TODO: Consider using WFE + SEVONPEND and call pollusb in a loop. This
+        // would be even faster since it avoids interrupts.
     }
+    // TODO: Investigate the right way to put the processor to sleep and the 
+    // various sleep modes to find out which is the right one here.
 }
