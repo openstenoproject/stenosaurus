@@ -21,4 +21,11 @@
 *.bin
 *.d
 
+*.sublime-project
+*.sublime-workspace
+
+.libopencm3_built
+
+application/stenosaurus
+
 .DS_Store
