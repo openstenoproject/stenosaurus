@@ -68,12 +68,6 @@ bool send_receive(hid_device *handle, unsigned char * const packet) {
     buf[0] = 0;
     memcpy(buf + 1, packet, PACKET_SIZE);
 
-    printf("About to send: ");
-    for (int i = 0; i < PACKET_SIZE; ++i) {
-        printf("0x%02X ", packet[i]);
-    }
-    printf("\n");
-
     int res = hid_write(handle, buf, PACKET_SIZE + 1);
     if (res < 0) {
         printf("Failed to send.\n");
@@ -86,19 +80,11 @@ bool send_receive(hid_device *handle, unsigned char * const packet) {
         return false;
     }
 
-    printf("Data: ");
-    for (int i = 0; i < PACKET_SIZE; ++i) {
-        printf("0x%02X ", packet[i]);
-    }
-    printf("\n");
-
     bool result = false;
 
     if (packet[0] == 1) {
-        printf("Success response\n");
         result = true;
     } else if (packet[0] == 2) {
-        printf("Error response\n");
         result = false;
     } else {
         printf("Unknown response\n");
@@ -319,6 +305,15 @@ int main(int argc, char* argv[])
         } else {
             printf("Failed to flash program: %s\n", argv[2]);
             result = -1;
+        }
+    } else if (argc >= 2 && strcmp(argv[1], "debug") == 0) {
+        hid_device *handle = hid_open(STENOSAURUS_VID, STENOSAURUS_PID, NULL);
+        if (handle == 0) {
+            printf("Could not find device.\n");
+            result = -1;
+        } else {
+            printf("Found device\n");
+            result = 0;
         }
     } else {
         printf("Usage: %s flash <path/to/program.bin>\n", argv[0]);
