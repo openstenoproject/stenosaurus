@@ -24,6 +24,10 @@
 #include <libopencm3/stm32/crc.h>
 #include "../common/user_button.h"
 #include "../common/leds.h"
+#include "usb.h"
+#include "protocol.h"
+#include "stroke.h"
+#include "txbolt.h"
 
 int main(void) {
     // Set the clock to use the 8Mhz internal high speed (hsi) clock as input 
@@ -35,9 +39,16 @@ int main(void) {
     setup_user_button();
     setup_leds();
 
+    init_usb(packet_handler);
+    
+    packet txbolt_packet;
+
     while (true) {
         if (is_user_button_pressed()) {
-            led_toggle(2);
+            led_toggle(0);
+            uint32_t stroke = string_to_stroke("PHRO*FR");
+            make_packet(stroke, &txbolt_packet);
+            serial_usb_send_data(&txbolt_packet.byte[0], txbolt_packet.length);
         }
     }
 }

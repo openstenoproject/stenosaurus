@@ -28,6 +28,6 @@
 // This function is called when there is a packet from the host. It will do 
 // whatever is requested and will place the response in the same buffer.
 // All packets are 64 bytes long and the buffer must be at least that long.
-bool packet_handler(uint8_t *packet, uint8_t size);
+bool packet_handler(uint8_t *packet);
 
 #endif // STENOSAURUS_BOOTLOADER_PROTOCOL_H

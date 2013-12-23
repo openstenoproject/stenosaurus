@@ -15,18 +15,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this library.  If not, see <http://www.gnu.org/licenses/>.
 //
-// This file defines the USB specific implementation of the bootloader.
+// This file defines the USB interface for the firmware.
 //
 // See the .c file for implementation details.
 //
 // The caller should first call init_usb. Then it should either call poll_usb
 // in a loop or set it as the interrupt handler for low priority USB events.
 
-#ifndef STENOSAURUS_BOOTLOADER_USB_H
-#define STENOSAURUS_BOOTLOADER_USB_H
+#ifndef STENOSAURUS_FIRMWARE_USB_H
+#define STENOSAURUS_FIRMWARE_USB_H
 
 #include <stdint.h>
 
 void init_usb(bool (*)(uint8_t*));
 
-#endif // STENOSAURUS_BOOTLOADER_USB_H
+uint32_t serial_usb_send_data(void *buf, int len);
+
+#endif // STENOSAURUS_FIRMWARE_USB_H

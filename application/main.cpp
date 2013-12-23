@@ -35,6 +35,7 @@ static const int REQUEST_BOOTLOADER = 5;
 static const int REQUEST_RESET = 6;
 static const int REQUEST_DEBUG = 9;
 
+static const uint8_t RESPONSE_UNSOLICITED = 0;
 static const uint8_t RESPONSE_OK = 1;
 static const uint8_t RESPONSE_ERROR = 2;
 
@@ -51,6 +52,11 @@ void write_word(uint8_t *packet, uint32_t word) {
     packet[3] = (word >> 24) & 0xFF;
 }
 
+void make_erase_packet(uint8_t *packet) {
+    packet[0] = REQUEST_ERASE_PROGRAM;
+    memset(packet + 1, 0, PACKET_SIZE - 1);
+}
+
 void make_verify_packet(uint8_t *packet, uint32_t program_size) {
     packet[0] = REQUEST_VERIFY_PROGRAM;
     write_word(packet + 1, program_size);
@@ -63,42 +69,39 @@ void make_debug_packet(uint8_t *packet, uint32_t param) {
     memset(packet + 5, 0, PACKET_SIZE - 5);
 }
 
+void make_bootloader_packet(uint8_t* packet) {
+    packet[0] = REQUEST_BOOTLOADER;
+    memset(packet + 1, 0, PACKET_SIZE - 1);
+}
+
+void make_reset_packet(uint8_t* packet, bool bootloader) {
+    packet[0] = REQUEST_RESET;
+    packet[1] = (bootloader ? 1 : 0);
+    memset(packet + 2, 0, PACKET_SIZE - 2);
+}
+
 bool send_receive(hid_device *handle, unsigned char * const packet) {
     uint8_t buf[PACKET_SIZE + 1];
     buf[0] = 0;
     memcpy(buf + 1, packet, PACKET_SIZE);
-
-    printf("About to send: ");
-    for (int i = 0; i < PACKET_SIZE; ++i) {
-        printf("0x%02X ", packet[i]);
-    }
-    printf("\n");
 
     int res = hid_write(handle, buf, PACKET_SIZE + 1);
     if (res < 0) {
         printf("Failed to send.\n");
         return false;
     }
-    //res = hid_read_timeout(handle, packet, PACKET_SIZE,  30 * 1000);
-    hid_read(handle, packet, PACKET_SIZE);
+    res = hid_read_timeout(handle, packet, PACKET_SIZE,  30 * 1000);
+    //res = hid_read(handle, packet, PACKET_SIZE);
     if (res <= 0) {
         printf("failed to receive.\n");
         return false;
     }
 
-    printf("Data: ");
-    for (int i = 0; i < PACKET_SIZE; ++i) {
-        printf("0x%02X ", packet[i]);
-    }
-    printf("\n");
-
     bool result = false;
 
     if (packet[0] == 1) {
-        printf("Success response\n");
         result = true;
     } else if (packet[0] == 2) {
-        printf("Error response\n");
         result = false;
     } else {
         printf("Unknown response\n");
@@ -106,6 +109,71 @@ bool send_receive(hid_device *handle, unsigned char * const packet) {
     }
 
     return result;
+}
+
+bool is_bootloader(hid_device *handle, bool *result) {
+    uint8_t packet[PACKET_SIZE];
+    make_bootloader_packet(packet);
+    if (send_receive(handle, packet)) {
+        *result = (packet[2] == 1) ? true : false;
+        return true;
+    }
+    return false;
+}
+
+bool send_reset(hid_device *handle, bool bootloader) {
+    uint8_t packet[PACKET_SIZE];
+    make_reset_packet(packet, bootloader);
+    return send_receive(handle, packet);
+}
+
+bool connect(hid_device** handle) {
+    *handle = hid_open(STENOSAURUS_VID, STENOSAURUS_PID, NULL);
+    return *handle != 0;
+}
+
+hid_device* enter_device_mode(bool bootloader) {
+    int attempts = 5;
+    hid_device *handle = 0;
+    while (true) {
+        if (!connect(&handle)) {
+            printf("Could not find device.\n");
+            if (--attempts == 0) return 0;
+            sleep(1000);
+        } else {
+            bool result;
+            if (!is_bootloader(handle, &result)) {
+                printf("Could not communicate with device.\n");
+                if (--attempts == 0) return 0;
+                sleep(1000);
+            } else if (result == bootloader) {
+                if (bootloader) {
+                    printf("In bootloader mode.\n");
+                } else {
+                    printf("In application mode.\n");
+                }
+                return handle;
+            } else {
+                if (bootloader) {
+                    printf("Not in bootloader mode.\n");
+                } else {
+                    printf("Not in application mode.\n");
+                }
+                if (--attempts == 0) {
+                    hid_close(handle);
+                    return 0;
+                }
+                send_reset(handle, bootloader);
+                hid_close(handle);
+                printf("Switching to requested mode.\n");
+                sleep(2000);
+            }
+        }
+    }
+}
+
+hid_device* enter_bootloader() {
+    return enter_device_mode(true);
 }
 
 // This algorithm is described by the Rocksoft^TM Model CRC Algorithm as follows:
@@ -190,7 +258,8 @@ bool flash_program(const char  * const filename) {
 
     // Sequence:
     // Get info to make sure we're talking to the right thing.?
-    // Send bootloader request. A one means we are in the bootloader. A zero means we are going to boot into the bootloader so wait and try again.
+    // Send bootloader request. A one means we are in the bootloader. A zero means we are not. 
+    // If we are not in bootloader then reser to bootloader mode and try again.
     // Send erase.
     // send many flash instructions to populate the program
     // call verify on the whole flash
@@ -198,41 +267,14 @@ bool flash_program(const char  * const filename) {
     // if there are any errors, report error, try again?
 
     // Get into bootloader mode.
-    int attempts = 5;
-    while (true) {
-        handle = hid_open(STENOSAURUS_VID, STENOSAURUS_PID, NULL);
-        if (handle == 0) {
-            printf("Could not find device.\n");
-            if (--attempts == 0) break;
-            sleep(1000);
-        } else {
-            memset(packet, 0, PACKET_SIZE);
-            packet[0] = REQUEST_BOOTLOADER;
-            if (!send_receive(handle, packet)) {
-                printf("Failed to communicated with device.\n");
-            }
-            if (packet[1] != 1) {
-                printf("Device is not in bootloader mode.\n");
-            }
-            if (res >= 0 && packet[1] == 1) {
-                break;
-            } else {
-                hid_close(handle);
-                handle = 0;
-                if (--attempts == 0) break;
-                sleep(1000);
-            }
-        }
-    }
-
+    handle = enter_bootloader();
     if (handle == 0) {
         printf("Could not enter bootloader mode.\n");
         return false;
     }
 
     // Erase current program.
-    memset(packet, 0, PACKET_SIZE);
-    packet[0] = REQUEST_ERASE_PROGRAM;
+    make_erase_packet(packet);
     if (!send_receive(handle, packet)) {
         printf("Could not erase program.\n");
         return false;
@@ -273,20 +315,20 @@ bool flash_program(const char  * const filename) {
     }
 
     // verify
+    // TODO: There shouldn't be a need for an argument to this function.
     make_verify_packet(packet, PROGRAM_MEMORY_SIZE / 4);
     if (!send_receive(handle, packet)) {
         printf("Failed to send verify request.\n");
         return false;
     }
-    uint32_t received_crc = packet[1] | (packet[2] << 8) | (packet[3] << 16) | (packet[4] << 24);
+    uint32_t received_crc = packet[2] | (packet[3] << 8) | (packet[4] << 16) | (packet[5] << 24);
     if (received_crc != full_crc) {
         printf("CRC mismatch. Actual: %u, Received: %u\n", full_crc, received_crc);
         return false;
     }
 
     // reset
-    memset(packet, 0, PACKET_SIZE);
-    packet[0] = REQUEST_RESET;
+    make_reset_packet(packet, false);
     if (!send_receive(handle, packet)) {
         // Hmm... failure to reset shouldn't necessarily be a failure to flash.
         printf("Could not reset.\n");
@@ -319,6 +361,14 @@ int main(int argc, char* argv[])
         } else {
             printf("Failed to flash program: %s\n", argv[2]);
             result = -1;
+        }
+    } else if (argc >= 2 && strcmp(argv[1], "debug") == 0) {
+        bool bootloader = (argc >= 3 && strcmp(argv[2], "bootloader") == 0);
+        hid_device *handle = enter_device_mode(bootloader);
+        if (handle == 0) {
+            printf("Failed\n");
+        } else {
+            printf("Success\n");
         }
     } else {
         printf("Usage: %s flash <path/to/program.bin>\n", argv[0]);

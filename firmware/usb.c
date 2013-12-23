@@ -15,14 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this library.  If not, see <http://www.gnu.org/licenses/>.
 //
-// This file defines the USB specific implementation of the bootloader.
-//
-// See the header file for interface documentation.
+// This file implements the USB interface to the Stenosaurus. See the header 
+// file for interface documentation to this code.
 //
 // It just so happens that Arm Cortex-M3 processors are little-endian and the
 // USB descriptors need to be little endian too. This allows us to define our
 // USB descriptors as more easily read structs, except for the HID description,
-// which uses a more complex and variable encoding.
+// which uses a more complex and variable length encoding.
 
 #include <stdlib.h>
 #include <libopencm3/stm32/rcc.h>
@@ -30,7 +29,9 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/hid.h>
 #include <libopencm3/cm3/nvic.h>
+#include <libopencm3/usb/cdc.h>
 #include "usb.h"
+#include "../common/leds.h"
 #include <libopencm3/cm3/scb.h>
 #include <stdbool.h>
 
@@ -41,12 +42,17 @@ static const struct usb_device_descriptor device_descriptor = {
   .bDescriptorType = USB_DT_DEVICE,
   // This device supports USB 2.0
   .bcdUSB = 0x0200,
-  // Zero means that the class is defined at the interface level.
-  .bDeviceClass = 0,
-  // Subclass and Protocol are set to zero to indicate that they are defined at
-  // the interface level.
-  .bDeviceSubClass = 0,
-  .bDeviceProtocol = 0,
+  // When cereating a multi-function device with more than one interface per 
+  // logical function (as we are doing with the CDC ACM interfaces below) one 
+  // must use Interface Association Descriptors and the next three values must 
+  // be set to the exact values specified. The values have assigned meanings, 
+  // which are mentioned in the comments, but since they must be used when 
+  // using IADs that makes their given definitions meaningless.
+  // See http://www.usb.org/developers/docs/InterfaceAssociationDescriptor_ecn.pdf
+  // and http://www.usb.org/developers/whitepapers/iadclasscode_r10.pdf
+  .bDeviceClass = 0xEF, // Miscellaneous Device.
+  .bDeviceSubClass = 2, // Common Class
+  .bDeviceProtocol = 1, // Interface Association
   // Packet size for endpoint zero in bytes.
   .bMaxPacketSize0 = 64,
   // The id of the vendor (VID) who makes this device. This must be a VID 
@@ -228,11 +234,177 @@ const struct usb_interface_descriptor hid_interface = {
   .extralen = sizeof(hid_function),
 };
 
+// This notification endpoint isn't implemented. According to CDC spec it's
+// optional, but its absence causes a NULL pointer dereference in Linux
+// cdc_acm driver.
+static const struct usb_endpoint_descriptor cdc_comm_endpoints[] = {
+  {
+    // The size of the endpoint descriptor in bytes: 7.
+    .bLength = USB_DT_ENDPOINT_SIZE,
+    // A value of 5 indicates that this describes an endpoint.
+    .bDescriptorType = USB_DT_ENDPOINT,
+    // Bit 7 indicates direction: 0 for OUT (to device) 1 for IN (to host).
+    // Bits 6-4 must be set to 0.
+    // Bits 3-0 indicate the endpoint number (zero is not allowed).
+    // Here we define the IN side of endpoint 3.
+    .bEndpointAddress = 0x83,
+    // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
+    // Bit 1-0: Indicates the mode of this endpoint.
+    // 00: Control
+    // 01: Isochronous
+    // 10: Bulk
+    // 11: Interrupt
+    // Here we're using interrupt.
+    .bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
+    // Maximum packet size.
+    .wMaxPacketSize = 16,
+    // The frequency, in number of frames, that we're going to be sending data.
+    // Here we're saying we're going to send data every 255 miliseconds. Since
+    // this endpoint is completely unused we use the largest interval possible.
+    .bInterval = 255,
+  }
+};
+
+static const struct usb_endpoint_descriptor cdc_data_endpoints[] = {
+  {
+    // The size of the endpoint descriptor in bytes: 7.
+    .bLength = USB_DT_ENDPOINT_SIZE,
+    // A value of 5 indicates that this describes an endpoint.
+    .bDescriptorType = USB_DT_ENDPOINT,
+    // Bit 7 indicates direction: 0 for OUT (to device) 1 for IN (to host).
+    // Bits 6-4 must be set to 0.
+    // Bits 3-0 indicate the endpoint number (zero is not allowed).
+    // Here we define the OUT side of endpoint 2.
+    .bEndpointAddress = 0x02,
+    // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
+    // Bit 1-0: Indicates the mode of this endpoint.
+    // 00: Control
+    // 01: Isochronous
+    // 10: Bulk
+    // 11: Interrupt
+    // Here we're using Bulk.
+    .bmAttributes = USB_ENDPOINT_ATTR_BULK,
+    // Maximum packet size.
+    .wMaxPacketSize = 64,
+    // This field is ignored for bulk endpoints.
+    .bInterval = 1,
+  },
+  {
+    // The size of the endpoint descriptor in bytes: 7.
+    .bLength = USB_DT_ENDPOINT_SIZE,
+    // A value of 5 indicates that this describes an endpoint.
+    .bDescriptorType = USB_DT_ENDPOINT,
+    // Bit 7 indicates direction: 0 for OUT (to device) 1 for IN (to host).
+    // Bits 6-4 must be set to 0.
+    // Bits 3-0 indicate the endpoint number (zero is not allowed).
+    // Here we define the IN side of endpoint 2.
+    .bEndpointAddress = 0x82,
+    // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
+    // Bit 1-0: Indicates the mode of this endpoint.
+    // 00: Control
+    // 01: Isochronous
+    // 10: Bulk
+    // 11: Interrupt
+    // Here we're using Bulk.
+    .bmAttributes = USB_ENDPOINT_ATTR_BULK,
+    // Maximum packet size.
+    .wMaxPacketSize = 64,
+    // This field is ignored for bulk endpoints.
+    .bInterval = 1,
+  }
+};
+
+static const struct {
+  struct usb_cdc_header_descriptor header;
+  struct usb_cdc_call_management_descriptor call_mgmt;
+  struct usb_cdc_acm_descriptor acm;
+  struct usb_cdc_union_descriptor cdc_union;
+} __attribute__((packed)) cdcacm_functional_descriptors = {
+  .header = {
+    .bFunctionLength = sizeof(struct usb_cdc_header_descriptor),
+    .bDescriptorType = CS_INTERFACE,
+    .bDescriptorSubtype = USB_CDC_TYPE_HEADER,
+    .bcdCDC = 0x0110,
+  },
+  .call_mgmt = {
+    .bFunctionLength = 
+    sizeof(struct usb_cdc_call_management_descriptor),
+    .bDescriptorType = CS_INTERFACE,
+    .bDescriptorSubtype = USB_CDC_TYPE_CALL_MANAGEMENT,
+    .bmCapabilities = 0,
+    // This is the index of the data class interface.
+    .bDataInterface = 2,
+  },
+  .acm = {
+    .bFunctionLength = sizeof(struct usb_cdc_acm_descriptor),
+    .bDescriptorType = CS_INTERFACE,
+    .bDescriptorSubtype = USB_CDC_TYPE_ACM,
+    .bmCapabilities = 0,
+  },
+  .cdc_union = {
+    .bFunctionLength = sizeof(struct usb_cdc_union_descriptor),
+    .bDescriptorType = CS_INTERFACE,
+    .bDescriptorSubtype = USB_CDC_TYPE_UNION,
+    // The index of the control interface.
+    .bControlInterface = 1,
+    // The index of the subordinate interface.
+    .bSubordinateInterface0 = 2,
+  }
+};
+
+static const struct usb_interface_descriptor cdc_comm_interface = {
+  .bLength = USB_DT_INTERFACE_SIZE,
+  .bDescriptorType = USB_DT_INTERFACE,
+  .bInterfaceNumber = 1,
+  .bAlternateSetting = 0,
+  .bNumEndpoints = 1,
+  .bInterfaceClass = USB_CLASS_CDC,
+  .bInterfaceSubClass = USB_CDC_SUBCLASS_ACM,
+  .bInterfaceProtocol = USB_CDC_PROTOCOL_AT,
+  .iInterface = 0,
+  .endpoint = cdc_comm_endpoints,
+  .extra = &cdcacm_functional_descriptors,
+  .extralen = sizeof(cdcacm_functional_descriptors)
+};
+
+static const struct usb_interface_descriptor cdc_data_interface = {
+  .bLength = USB_DT_INTERFACE_SIZE,
+  .bDescriptorType = USB_DT_INTERFACE,
+  .bInterfaceNumber = 2,
+  .bAlternateSetting = 0,
+  .bNumEndpoints = 2,
+  .bInterfaceClass = USB_CLASS_DATA,
+  .bInterfaceSubClass = 0,
+  .bInterfaceProtocol = 0,
+  .iInterface = 0,
+  .endpoint = cdc_data_endpoints,
+};
+
+static const struct usb_iface_assoc_descriptor cdc_acm_interface_association = {
+    .bLength = USB_DT_INTERFACE_ASSOCIATION_SIZE,
+    .bDescriptorType = USB_DT_INTERFACE_ASSOCIATION,
+    .bFirstInterface = 1,
+    .bInterfaceCount = 2,
+    .bFunctionClass = USB_CLASS_CDC,
+    .bFunctionSubClass = USB_CDC_SUBCLASS_ACM,
+    .bFunctionProtocol = USB_CDC_PROTOCOL_AT,
+    .iFunction = 0,
+};
+
 const struct usb_interface interfaces[] = {
   {
     .num_altsetting = 1,
     .altsetting = &hid_interface,
-  }
+  },
+  {
+    .num_altsetting = 1,
+    .iface_assoc = &cdc_acm_interface_association,
+    .altsetting = &cdc_comm_interface,
+  },
+  {
+    .num_altsetting = 1,
+    .altsetting = &cdc_data_interface,
+  },
 };
 
 static const struct usb_config_descriptor config_descriptor = {
@@ -245,7 +417,7 @@ static const struct usb_config_descriptor config_descriptor = {
   // libopencm3.
   .wTotalLength = 0,
   // The number of interfaces in this configuration.
-  .bNumInterfaces = 1,
+  .bNumInterfaces = 3,
   // The index of this configuration. Starts counting from 1.
   .bConfigurationValue = 1,
   // A string index describing this configration. Zero means not provided.
@@ -273,11 +445,11 @@ static const char *usb_strings[] = {
 
 // This adds support for the additional control requests needed for the HID
 // interface.
-static int control_request_handler(usbd_device *dev, 
-                                   struct usb_setup_data *req, 
-                                   uint8_t **buf, 
-                                   uint16_t *len,
-                                   void (**complete)(usbd_device *, struct usb_setup_data *)) {
+static int hid_control_request_handler(usbd_device *dev, 
+                                       struct usb_setup_data *req, 
+                                       uint8_t **buf, 
+                                       uint16_t *len,
+                                       void (**complete)(usbd_device *, struct usb_setup_data *)) {
     (void)dev;
     (void)complete;
 
@@ -302,17 +474,45 @@ static int control_request_handler(usbd_device *dev,
     return USBD_REQ_NOTSUPP;
 }
 
+// This adds support for the additional control requests needed for the CDC
+// interfaces.
+static int cdcacm_control_request_handler(usbd_device *dev, 
+                                          struct usb_setup_data *req, 
+                                          uint8_t **buf, 
+                                          uint16_t *len, 
+                                          void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req)) {
+  (void)dev;
+  (void)buf;
+  (void)complete;
+
+  switch(req->bRequest) {
+  case USB_CDC_REQ_SET_CONTROL_LINE_STATE: {
+    // The Linux cdc_acm driver requires this to be implemented
+    // even though it's optional in the CDC spec, and we don't
+    // advertise it in the ACM functional descriptor.
+    return USBD_REQ_HANDLED;
+  }
+  case USB_CDC_REQ_SET_LINE_CODING: 
+    if(*len < sizeof(struct usb_cdc_line_coding)) {
+      return USBD_REQ_NOTSUPP;
+    }
+    return USBD_REQ_HANDLED;
+  }
+  return USBD_REQ_NOTSUPP;
+}
+
 static bool (*packet_handler)(uint8_t*);
 static uint8_t hid_buffer[64];
 
-static void endpoint_callback(usbd_device *usbd_dev, uint8_t ep) {
-    uint16_t bytes_read = usbd_ep_read_packet(usbd_dev, ep, hid_buffer, sizeof(hid_buffer));
+static void hid_rx_callback(usbd_device *dev, uint8_t ep) {
+    uint16_t bytes_read = usbd_ep_read_packet(dev, ep, hid_buffer, sizeof(hid_buffer));
     (void)bytes_read;
     // This function reads the packet and replaces it with the response buffer.
     bool reboot = packet_handler(hid_buffer);
     // If we don't send the whole buffer then hidapi doesn't read the report. Not sure why.
-    usbd_ep_write_packet(usbd_dev, 0x81, hid_buffer, sizeof(hid_buffer));
+    usbd_ep_write_packet(dev, 0x81, hid_buffer, sizeof(hid_buffer));
     if (reboot) {
+        // Wait for the ack to be sent.
         for (volatile int i = 0; i < 800000; ++i);
         scb_reset_system();
     }
@@ -329,23 +529,44 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
 
     // The address argument uses the MSB to indicate whether data is going in to
     // the host or out to the device (0 for out, 1 for in). 
+    // HID endpoints:
     // Set up endpoint 1 for data going IN to the host.
     usbd_ep_setup(dev, 0x81, USB_ENDPOINT_ATTR_INTERRUPT, 64, NULL);
     // Set up endpoint 1 for data coming OUT from the host.
-    usbd_ep_setup(dev, 0x01, USB_ENDPOINT_ATTR_INTERRUPT, 64, endpoint_callback);
+    usbd_ep_setup(dev, 0x01, USB_ENDPOINT_ATTR_INTERRUPT, 64, hid_rx_callback);
+    // CDC endpoints:
+    // OUT endpoint for data.
+    usbd_ep_setup(dev, 0x02, USB_ENDPOINT_ATTR_BULK, 64, NULL);
+    // IN endpoint for data.
+    usbd_ep_setup(dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, NULL);
+    // Useless IN endpoint for comm.
+    // TODO: Can this be smaller?
+    usbd_ep_setup(dev, 0x83, USB_ENDPOINT_ATTR_INTERRUPT, 16, NULL);
 
-    // The callback is registered for requests that are:
+    // This callback is registered for requests that are:
     // - device to host
-    // - standard
+    // - of type standard
     // - the recipient is an interface
     // It does this by applying the mask to bmRequestType and making sure it is
     // equal to the value.
     usbd_register_control_callback(dev,
-                                   // The is the value.
+                                   // This is the value.
                                    USB_REQ_TYPE_IN | USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE,
                                    // This is the mask.
                                    USB_REQ_TYPE_DIRECTION | USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
-                                   control_request_handler);
+                                   // The callback function
+                                   hid_control_request_handler);
+
+    // This callback is registered for requests that are:
+    // - of type class
+    // - the recipient is an interface
+    usbd_register_control_callback(dev, 
+                                   // The value
+                                   USB_REQ_TYPE_CLASS | USB_REQ_TYPE_INTERFACE, 
+                                   // The mask
+                                   USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT, 
+                                   // The callback function
+                                   cdcacm_control_request_handler);
 }
 
 // The buffer used for control requests. This needs to be big enough to hold
@@ -370,6 +591,10 @@ void init_usb(bool (*handler)(uint8_t*)) {
     // up D+ via a 1.5K resistor.
     gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_OPENDRAIN, 
                   GPIO0);
+}
+
+uint32_t serial_usb_send_data(void *buf, int len) {
+    return usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
 }
 
 // This is the interrupt handler for low priority USB events. Implementing
