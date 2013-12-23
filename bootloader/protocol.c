@@ -75,14 +75,16 @@ void zero(uint8_t *buf, uint8_t size) {
     fill(buf, size, 0);
 }
 
-void make_success(uint8_t *packet) {
+void make_success(uint8_t *packet, uint8_t request) {
     packet[0] = RESPONSE_OK;
-    zero(packet + 1, PACKET_SIZE - 1);
+    packet[1] = request;
+    zero(packet + 2, PACKET_SIZE - 2);
 }
 
-void make_error(uint8_t *packet) {
+void make_error(uint8_t *packet, uint8_t request) {
     packet[0] = RESPONSE_ERROR;
-    zero(packet + 1, PACKET_SIZE - 1);
+    packet[1] = request;
+    zero(packet + 2, PACKET_SIZE - 2);
 }
 
 uint32_t read_word(uint8_t *b) {
@@ -96,8 +98,8 @@ void write_word(uint8_t *packet, uint32_t word) {
     packet[3] = (word >> 24) & 0xFF;
 }
 
-// Must be less than 62 characters.
-static const char *device_info = "Hi";
+// Must be less than or equal to 61 characters.
+static const char *device_info = "Stenosaurus has no info yet.";
 
 bool packet_handler(uint8_t *packet, uint8_t size) {
     (void)size;
@@ -106,16 +108,19 @@ bool packet_handler(uint8_t *packet, uint8_t size) {
     
     if (action == REQUEST_INFO) {
         *(packet++) = RESPONSE_OK;
+        *(packet++) = REQUEST_INFO;
         const char* info = device_info;
+        uint32_t len = 0;
         while (*info) {
             *(packet++) = *(info++);
+            ++len;
         }
-        *packet = 0;
+        zero(packet, PACKET_SIZE - 2 - len);
     } else if (action == REQUEST_ERASE_PROGRAM) {
         if (erase_program()) {
-            make_success(packet);
+            make_success(packet, action);
         } else {
-            make_error(packet);
+            make_error(packet, action);
         }
     } else if (action == REQUEST_FLASH_PROGRAM) {
         int num_words = packet[1];
@@ -124,7 +129,7 @@ bool packet_handler(uint8_t *packet, uint8_t size) {
         buf += 4;
         // Make sure that there is no overrun with the number of words specified.
         if ((num_words * 4) > (PACKET_SIZE - 6)) {
-            make_error(packet);
+            make_error(packet, action);
             return false;
         }
         uint8_t *end = buf + num_words * 4;
@@ -132,59 +137,41 @@ bool packet_handler(uint8_t *packet, uint8_t size) {
             uint32_t word = read_word(buf);
             buf += 4;
             if (!my_flash_program_word(address, word)) {
-                make_error(packet);
+                make_error(packet, action);
                 return false;
             }
             led_toggle(3);
             address += 4;
         }
-        make_success(packet);
+        make_success(packet, action);
     } else if (action == REQUEST_VERIFY_PROGRAM) {
         crc_reset();
         uint32_t num_words = read_word(packet + 1);
         if (PROGRAM_AREA_BEGIN + num_words * 4 > PROGRAM_AREA_END) {
-            make_error(packet);
+            make_error(packet, action);
             return false;
         }
         uint32_t crc_result = crc_calculate_block((uint32_t*)PROGRAM_AREA_BEGIN,
                                                   num_words);
         packet[0] = RESPONSE_OK;
-        write_word(packet + 1, crc_result);
-        zero(packet + 5, PACKET_SIZE - 5);
+        packet[1] = action;
+        write_word(packet + 2, crc_result);
+        zero(packet + 6, PACKET_SIZE - 6);
     } else if (action == REQUEST_BOOTLOADER) {
         packet[0] = RESPONSE_OK;
-        packet[1] = 1;
+        packet[1] = action;
+        packet[2] = 1;
+        zero(packet + 3, PACKET_SIZE - 3);
     } else if (action == REQUEST_RESET) {
         led_toggle(3);
-        make_success(packet);
+        make_success(packet, action);
         return true;
     } else if (action == REQUEST_DEBUG) {
-        // find last non-erased word
-        uint32_t *end = (uint32_t*)PROGRAM_AREA_BEGIN;
-        uint32_t *buf = (uint32_t*)PROGRAM_AREA_END;
-        while (buf >= end) {
-            if (*buf != 0xFFFFFFFF) {
-                break;
-            }
-            --buf;
-        }
-        if (buf >= end) {
-            packet[0] = RESPONSE_OK;
-            write_word(packet + 1, (uint32_t)buf);
-            write_word(packet + 5, *buf);
-            zero(packet + 9, PACKET_SIZE - 9);
-        } else {
-            make_error(packet);
-            return false;
-        }
-        
-        for (int i = 0; i < 4; ++i) {
-            if (packet[1] & (1 << i)) {
-                led_toggle(i);
-            }
-        }
+        // Fill in with whatever you like while debugging.
+        // By default just returns success.
+        make_success(packet, action);
     } else {
-        make_error(packet);
+        make_error(packet, action);
     }
     
     return false;

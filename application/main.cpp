@@ -35,6 +35,7 @@ static const int REQUEST_BOOTLOADER = 5;
 static const int REQUEST_RESET = 6;
 static const int REQUEST_DEBUG = 9;
 
+static const uint8_t RESPONSE_UNSOLICITED = 0;
 static const uint8_t RESPONSE_OK = 1;
 static const uint8_t RESPONSE_ERROR = 2;
 
@@ -197,10 +198,10 @@ bool flash_program(const char  * const filename) {
             if (!send_receive(handle, packet)) {
                 printf("Failed to communicated with device.\n");
             }
-            if (packet[1] != 1) {
+            if (packet[2] != 1) {
                 printf("Device is not in bootloader mode.\n");
             }
-            if (res >= 0 && packet[1] == 1) {
+            if (res >= 0 && packet[2] == 1) {
                 break;
             } else {
                 hid_close(handle);
@@ -264,7 +265,7 @@ bool flash_program(const char  * const filename) {
         printf("Failed to send verify request.\n");
         return false;
     }
-    uint32_t received_crc = packet[1] | (packet[2] << 8) | (packet[3] << 16) | (packet[4] << 24);
+    uint32_t received_crc = packet[2] | (packet[3] << 8) | (packet[4] << 16) | (packet[5] << 24);
     if (received_crc != full_crc) {
         printf("CRC mismatch. Actual: %u, Received: %u\n", full_crc, received_crc);
         return false;
