@@ -25,7 +25,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "protocol.h"
-#include "../common/leds.h"
 #include <libopencm3/stm32/flash.h>
 #include <libopencm3/stm32/crc.h>
 #include <libopencm3/stm32/rcc.h>
@@ -141,7 +140,6 @@ bool packet_handler(uint8_t *packet) {
                 make_error(packet, action);
                 return false;
             }
-            led_toggle(3);
             address += 4;
         }
         make_success(packet, action);

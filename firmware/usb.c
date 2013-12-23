@@ -540,6 +540,7 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
     // IN endpoint for data.
     usbd_ep_setup(dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, NULL);
     // Useless IN endpoint for comm.
+    // TODO: Can this be smaller?
     usbd_ep_setup(dev, 0x83, USB_ENDPOINT_ATTR_INTERRUPT, 16, NULL);
 
     // This callback is registered for requests that are:
@@ -590,6 +591,10 @@ void init_usb(bool (*handler)(uint8_t*)) {
     // up D+ via a 1.5K resistor.
     gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_OPENDRAIN, 
                   GPIO0);
+}
+
+uint32_t serial_usb_send_data(void *buf, int len) {
+    return usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
 }
 
 // This is the interrupt handler for low priority USB events. Implementing

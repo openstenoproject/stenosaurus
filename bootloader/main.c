@@ -35,7 +35,6 @@
 #include <libopencm3/stm32/crc.h>
 #include "usb.h"
 #include "../common/user_button.h"
-#include "../common/leds.h"
 #include "protocol.h"
 #include "memorymap.h"
 #include <libopencm3/stm32/f1/bkp.h>
@@ -111,27 +110,25 @@ static bool should_run_firmware(void) {
 
 int main(void) {
     rcc_peripheral_enable_clock(&RCC_AHBENR, RCC_AHBENR_CRCEN);
-    // TODO: Check if we also need RCC_APB1ENR_PWREN.
     rcc_peripheral_enable_clock(&RCC_APB1ENR, RCC_APB1ENR_BKPEN);
     
     // TODO: these need to be torn down too when launching the firmware.
     setup_user_button();
-    setup_leds();
     
     if (should_run_firmware()) {
-        led_toggle(0);
         rcc_peripheral_disable_clock(&RCC_AHBENR, RCC_AHBENR_CRCEN);
-        // TODO: Check if we also need RCC_APB1ENR_PWREN.
         rcc_peripheral_disable_clock(&RCC_APB1ENR, RCC_APB1ENR_BKPEN);
         run_firmware();
     }
-    led_toggle(1);
 
     // Set the clock to use the 8Mhz internal high speed (hsi) clock as input 
     // and set the output of the PLL at 48Mhz.
     // TODO: The documentation for the chip says that HSE must be used for USB. 
     // But in the examples we see HSI used with USB and it also seems to work.
     rcc_clock_setup_in_hsi_out_48mhz();
+
+    // This is for PC0, which is used in init_usb to enable USB.
+    rcc_peripheral_enable_clock(&RCC_APB2ENR, RCC_APB2ENR_IOPCEN);
 
     init_usb(packet_handler);
     
@@ -144,7 +141,7 @@ int main(void) {
         // device and that this must be handled.
         __WFI();
         // TODO: Consider using WFE + SEVONPEND and call pollusb in a loop. This
-        // would be event faster since it avoid interrupts.
+        // would be even faster since it avoid interrupts.
     }
     // TODO: Investigate the right way to put the processor to sleep and the 
     // various sleep modes to find out which is the right one here.

@@ -29,4 +29,6 @@
 
 void init_usb(bool (*)(uint8_t*));
 
+uint32_t serial_usb_send_data(void *buf, int len);
+
 #endif // STENOSAURUS_FIRMWARE_USB_H

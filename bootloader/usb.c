@@ -31,7 +31,6 @@
 #include <libopencm3/usb/hid.h>
 #include <libopencm3/cm3/nvic.h>
 #include "usb.h"
-#include "../common/leds.h"
 #include <libopencm3/cm3/scb.h>
 #include <stdbool.h>
 
@@ -314,7 +313,6 @@ static void endpoint_callback(usbd_device *usbd_dev, uint8_t ep) {
     // If we don't send the whole buffer then hidapi doesn't read the report. Not sure why.
     usbd_ep_write_packet(usbd_dev, 0x81, hid_buffer, sizeof(hid_buffer));
     if (reboot) {
-        led_toggle(2);
         for (volatile int i = 0; i < 800000; ++i);
         scb_reset_system();
     }

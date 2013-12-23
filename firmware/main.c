@@ -26,6 +26,8 @@
 #include "../common/leds.h"
 #include "usb.h"
 #include "protocol.h"
+#include "stroke.h"
+#include "txbolt.h"
 
 int main(void) {
     // Set the clock to use the 8Mhz internal high speed (hsi) clock as input 
@@ -39,17 +41,14 @@ int main(void) {
 
     init_usb(packet_handler);
     
-    // Tell the chip that when it returns from an interrupt it should go to sleep.
-    SCB_SCR |= SCB_SCR_SLEEPONEXIT;
-    // Then go to sleep.
+    packet txbolt_packet;
+
     while (true) {
-        // In theory this should never return since we set SLEEPONEXIT. However,
-        // the documentation states there can be spurious events that wake the
-        // device and that this must be handled.
-        __WFI();
-        // TODO: Consider using WFE + SEVONPEND and call pollusb in a loop. This
-        // would be even faster since it avoids interrupts.
+        if (is_user_button_pressed()) {
+            led_toggle(0);
+            uint32_t stroke = string_to_stroke("PHRO*FR");
+            make_packet(stroke, &txbolt_packet);
+            serial_usb_send_data(&txbolt_packet.byte[0], txbolt_packet.length);
+        }
     }
-    // TODO: Investigate the right way to put the processor to sleep and the 
-    // various sleep modes to find out which is the right one here.
 }
