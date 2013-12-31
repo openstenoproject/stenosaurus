@@ -35,13 +35,9 @@ typedef enum {
     SDIO_EUNKNOWN = 9,
 } sdio_error_t;
 
-void init_sdio(void);
+void sdio_init(void);
 
-void sdio_power_up(void);
-
-void sdio_send_command(uint32_t cmd, uint32_t arg);
-
-sdio_error_t get_command_result(void);
+bool sdio_card_present(void);
 
 bool sdio_card_init(void);
 
