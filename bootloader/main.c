@@ -2,21 +2,21 @@
 //
 // Copyright (C) 2013 Hesky Fisher <hesky.fisher@gmail.com>
 //
-// This library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// This library is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
+// Foundation, either version 3 of the License, or (at your option) any later
+// version.
 //
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// This library is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+// details.
 //
-// You should have received a copy of the GNU General Public License
-// along with this library.  If not, see <http://www.gnu.org/licenses/>.
+// You should have received a copy of the GNU General Public License along with
+// this library.  If not, see <http://www.gnu.org/licenses/>.
 //
-// This file is the main entry point for the stenosaurus bootloader. The purpose 
-// of the bootloader is to allow updating the firmware of the stenosaurus in a 
+// This file is the main entry point for the stenosaurus bootloader. The purpose
+// of the bootloader is to allow updating the firmware of the stenosaurus in a
 // safe way.
 // 
 // Design goals:
@@ -62,9 +62,9 @@ static bool firmware_is_valid(void) {
     if (FIRMWARE_BASE[1] >= PROGRAM_AREA_END) {
         return false;
     }
-    // The value of erased flash is all ones (0xFFFFFFFF). After we write the 
-    // firmware we write the length of the program in 32 bit words and the crc 
-    // followed by a zero. We use that to verify the program before running it. 
+    // The value of erased flash is all ones (0xFFFFFFFF). After we write the
+    // firmware we write the length of the program in 32 bit words and the crc
+    // followed by a zero. We use that to verify the program before running it.
     // We search backwards to find the zero and read the two other words.
     uint32_t *end = ((uint32_t*)PROGRAM_AREA_BEGIN) + 2;
     uint32_t *buf = (uint32_t*)PROGRAM_AREA_END;
@@ -80,7 +80,8 @@ static bool firmware_is_valid(void) {
     uint32_t program_length = buf[0];
     uint32_t program_crc = buf[1];
     // TODO: Send a pull request to make the argument const.
-    uint32_t crc_result = crc_calculate_block((uint32_t*)FIRMWARE_BASE, program_length);
+    uint32_t crc_result = crc_calculate_block((uint32_t*)FIRMWARE_BASE, 
+                                              program_length);
     if (program_crc != crc_result) return false;
     
     return true;
@@ -121,18 +122,16 @@ int main(void) {
         run_firmware();
     }
 
-    // Set the clock to use the 8Mhz internal high speed (hsi) clock as input 
+    // Set the clock to use the 8Mhz internal high speed (hsi) clock as input
     // and set the output of the PLL at 48Mhz.
     // TODO: The documentation for the chip says that HSE must be used for USB. 
     // But in the examples we see HSI used with USB and it also seems to work.
     rcc_clock_setup_in_hsi_out_48mhz();
 
-    // This is for PC0, which is used in init_usb to enable USB.
-    rcc_peripheral_enable_clock(&RCC_APB2ENR, RCC_APB2ENR_IOPCEN);
-
     init_usb(packet_handler);
     
-    // Tell the chip that when it returns from an interrupt it should go to sleep.
+    // Tell the chip that when it returns from an interrupt it should go to
+    // sleep.
     SCB_SCR |= SCB_SCR_SLEEPONEXIT;
     // Then go to sleep.
     while (true) {

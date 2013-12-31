@@ -363,12 +363,22 @@ int main(int argc, char* argv[])
             result = -1;
         }
     } else if (argc >= 2 && strcmp(argv[1], "debug") == 0) {
-        bool bootloader = (argc >= 3 && strcmp(argv[2], "bootloader") == 0);
-        hid_device *handle = enter_device_mode(bootloader);
+        hid_device *handle = enter_device_mode(false);
         if (handle == 0) {
             printf("Failed\n");
         } else {
             printf("Success\n");
+
+            uint8_t packet[PACKET_SIZE];
+            packet[0] = REQUEST_DEBUG;
+            if (send_receive(handle, packet)) {
+                for (int i = 0; i < PACKET_SIZE; ++i) {
+                    printf("0x%X ", packet[i]);
+                }
+                printf("\n");
+            } else {
+                printf("Debug command failed.\n");
+            }
         }
     } else {
         printf("Usage: %s flash <path/to/program.bin>\n", argv[0]);

@@ -15,19 +15,17 @@
 // You should have received a copy of the GNU General Public License along with
 // this library.  If not, see <http://www.gnu.org/licenses/>.
 //
-// This file defines the communication protocol of the firmware.
+// This file defines the clock interface for the Stenosaurus firmware.
 //
 // See the .c file for implementation details.
 
-#ifndef STENOSAURUS_FIRMWARE_PROTOCOL_H
-#define STENOSAURUS_FIRMWARE_PROTOCOL_H
+#ifndef STENOSAURUS_FIRMWARE_CLOCK_H
+#define STENOSAURUS_FIRMWARE_CLOCK_H
 
 #include <stdint.h>
-#include <stdbool.h>
 
-// This function is called when there is a packet from the host. It will do
-// whatever is requested and will place the response in the same buffer. The
-// buffer must be at least 64 bytes long.
-bool packet_handler(uint8_t *packet);
+extern volatile uint32_t system_millis;
 
-#endif // STENOSAURUS_FIRMWARE_PROTOCOL_H
+void clock_init(void);
+
+#endif // STENOSAURUS_FIRMWARE_CLOCK_H

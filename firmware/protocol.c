@@ -2,18 +2,18 @@
 //
 // Copyright (C) 2013 Hesky Fisher <hesky.fisher@gmail.com>
 //
-// This library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// This library is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
+// Foundation, either version 3 of the License, or (at your option) any later
+// version.
 //
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// This library is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+// details.
 //
-// You should have received a copy of the GNU General Public License
-// along with this library.  If not, see <http://www.gnu.org/licenses/>.
+// You should have received a copy of the GNU General Public License along with
+// this library.  If not, see <http://www.gnu.org/licenses/>.
 //
 // This file defines the communication protocol of the firmware.
 //
@@ -29,6 +29,13 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/pwr.h>
 #include <libopencm3/stm32/f1/bkp.h>
+#include <libopencm3/stm32/gpio.h>
+#include "sdio.h"
+#include "debug.h"
+
+// TODO: remove later
+#include <libopencm3/stm32/sdio.h>
+
 
 static const uint8_t PACKET_SIZE = 64;
 
@@ -98,7 +105,8 @@ bool packet_handler(uint8_t *packet) {
         packet[2] = 0;
         zero(packet + 3, PACKET_SIZE - 3);
     } else if (action == REQUEST_RESET) {
-        rcc_peripheral_enable_clock(&RCC_APB1ENR, RCC_APB1ENR_BKPEN | RCC_APB1ENR_PWREN);
+        rcc_peripheral_enable_clock(&RCC_APB1ENR, 
+                                    RCC_APB1ENR_BKPEN | RCC_APB1ENR_PWREN);
         pwr_disable_backup_domain_write_protect();
 
         // An argument of one means that we want to reset into bootloader mode.
@@ -116,8 +124,6 @@ bool packet_handler(uint8_t *packet) {
 
         return true;
     } else if (action == REQUEST_DEBUG) {
-        // Fill in with whatever you like while debugging.
-        // By default just returns success.
         make_success(packet, action);
     } else {
         make_error(packet, action);

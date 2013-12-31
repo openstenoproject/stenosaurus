@@ -2,18 +2,18 @@
 //
 // Copyright (C) 2013 Hesky Fisher <hesky.fisher@gmail.com>
 //
-// This library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// This library is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
+// Foundation, either version 3 of the License, or (at your option) any later
+// version.
 //
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// This library is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+// details.
 //
-// You should have received a copy of the GNU General Public License
-// along with this library.  If not, see <http://www.gnu.org/licenses/>.
+// You should have received a copy of the GNU General Public License along with
+// this library.  If not, see <http://www.gnu.org/licenses/>.
 //
 // This file defines the USB specific implementation of the bootloader.
 //
@@ -123,8 +123,8 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
   }
 };
 
-// The data below is an HID report descriptor. The first byte in each item 
-// indicates the number of bytes that follow in the lower two bits. The next two 
+// The data below is an HID report descriptor. The first byte in each item
+// indicates the number of bytes that follow in the lower two bits. The next two
 // bits indicate the type of the item. The remaining four bits indicate the tag.
 // Words are stored in little endian.
 // TODO: Understand this better. Maybe use the definition from rawhid?
@@ -273,11 +273,12 @@ static const char *usb_strings[] = {
 
 // This adds support for the additional control requests needed for the HID
 // interface.
-static int control_request_handler(usbd_device *dev, 
-                                   struct usb_setup_data *req, 
-                                   uint8_t **buf, 
-                                   uint16_t *len,
-                                   void (**complete)(usbd_device *, struct usb_setup_data *)) {
+static int control_request_handler(
+  usbd_device *dev, 
+  struct usb_setup_data *req, 
+  uint8_t **buf, 
+  uint16_t *len,
+  void (**complete)(usbd_device *, struct usb_setup_data *)) {
     (void)dev;
     (void)complete;
 
@@ -306,11 +307,14 @@ static bool (*packet_handler)(uint8_t*);
 static uint8_t hid_buffer[64];
 
 static void endpoint_callback(usbd_device *usbd_dev, uint8_t ep) {
-    uint16_t bytes_read = usbd_ep_read_packet(usbd_dev, ep, hid_buffer, sizeof(hid_buffer));
+    uint16_t bytes_read = usbd_ep_read_packet(usbd_dev, 
+                                              ep, 
+                                              hid_buffer, 
+                                              sizeof(hid_buffer));
     (void)bytes_read;
     // This function reads the packet and replaces it with the response buffer.
     bool reboot = packet_handler(hid_buffer);
-    // If we don't send the whole buffer then hidapi doesn't read the report. Not sure why.
+    // The full 64 bytes must be sent regardless of the amount of actual data.
     usbd_ep_write_packet(usbd_dev, 0x81, hid_buffer, sizeof(hid_buffer));
     if (reboot) {
         for (volatile int i = 0; i < 800000; ++i);
@@ -318,10 +322,10 @@ static void endpoint_callback(usbd_device *usbd_dev, uint8_t ep) {
     }
 }
 
-// The device is not configured for its function until the host chooses a 
-// configuration even if the device only supports one configuration like this 
-// one. This function sets up the real USB interface that we want to use. It 
-// will be called again if the device is reset by the host so all setup needs to 
+// The device is not configured for its function until the host chooses a
+// configuration even if the device only supports one configuration like this
+// one. This function sets up the real USB interface that we want to use. It
+// will be called again if the device is reset by the host so all setup needs to
 // happen here.
 static void set_config_handler(usbd_device *dev, uint16_t wValue) {
     (void)dev;
@@ -332,7 +336,8 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
     // Set up endpoint 1 for data going IN to the host.
     usbd_ep_setup(dev, 0x81, USB_ENDPOINT_ATTR_INTERRUPT, 64, NULL);
     // Set up endpoint 1 for data coming OUT from the host.
-    usbd_ep_setup(dev, 0x01, USB_ENDPOINT_ATTR_INTERRUPT, 64, endpoint_callback);
+    usbd_ep_setup(
+      dev, 0x01, USB_ENDPOINT_ATTR_INTERRUPT, 64, endpoint_callback);
 
     // The callback is registered for requests that are:
     // - device to host
@@ -340,22 +345,24 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
     // - the recipient is an interface
     // It does this by applying the mask to bmRequestType and making sure it is
     // equal to the value.
-    usbd_register_control_callback(dev,
-                                   // The is the value.
-                                   USB_REQ_TYPE_IN | USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE,
-                                   // This is the mask.
-                                   USB_REQ_TYPE_DIRECTION | USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
-                                   control_request_handler);
+    usbd_register_control_callback(
+      dev,
+      // The is the value.
+      USB_REQ_TYPE_IN | USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE,
+      // This is the mask.
+      USB_REQ_TYPE_DIRECTION | USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
+      control_request_handler);
 }
 
-// The buffer used for control requests. This needs to be big enough to hold
-// any descriptor, the largest of which will be the configuration descriptor.
+// The buffer used for control requests. This needs to be big enough to hold any
+// descriptor, the largest of which will be the configuration descriptor.
 static uint8_t usbd_control_buffer[128];
 
 // Structure holding all the info related to the usb device.
 static usbd_device *usbd_dev;
 
-// TODO: The driver should simply be chosen by the same variable as everything else.
+// TODO: The driver should simply be chosen by the same variable as everything
+// else.
 void init_usb(bool (*handler)(uint8_t*)) {
     packet_handler = handler;
     usbd_dev = usbd_init(&stm32f103_usb_driver, &device_descriptor, 
@@ -363,17 +370,21 @@ void init_usb(bool (*handler)(uint8_t*)) {
                          usbd_control_buffer, sizeof(usbd_control_buffer));
     usbd_register_set_config_callback(usbd_dev, set_config_handler);
     nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
-    // Enable USB by raising up D+ via a 1.5K resistor.
-    // This is done on the WaveShare board by removing the USB EN jumper and 
-    // connecting PC0 to the right hand pin of the jumper port with a patch
-    // wire. By setting PC0 to open drain it turns on an NFET which pulls 
-    // up D+ via a 1.5K resistor.
+    // Enable USB by raising up D+ via a 1.5K resistor. This is done on the
+    // WaveShare board by removing the USB EN jumper and  connecting PC0 to the
+    // right hand pin of the jumper port with a patch wire. By setting PC0 to
+    // open drain it turns on an NFET which pulls  up D+ via a 1.5K resistor.
+
+    // Enable the clock to General Purpose Input Output port C.
+    rcc_peripheral_enable_clock(&RCC_APB2ENR, RCC_APB2ENR_IOPCEN);
+    // Set the mode for the pin. The output is zero by default, which is what
+    // we want.
     gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_OPENDRAIN, 
                   GPIO0);
 }
 
-// This is the interrupt handler for low priority USB events. Implementing
-// a function with this name makes it the function used for the interrupt.
+// This is the interrupt handler for low priority USB events. Implementing a
+// function with this name makes it the function used for the interrupt.
 // TODO: Handle the other USB interrupts.
 void usb_lp_can_rx0_isr(void) {  
     usbd_poll(usbd_dev);
