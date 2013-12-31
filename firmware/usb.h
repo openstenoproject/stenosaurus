@@ -28,7 +28,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void init_usb(bool (*)(uint8_t*));
+void usb_init(bool (*)(uint8_t*));
 
 uint32_t serial_usb_send_data(void *buf, int len);
 

@@ -643,7 +643,7 @@ static uint8_t usbd_control_buffer[128];
 // Structure holding all the info related to the usb device.
 static usbd_device *usbd_dev;
 
-void init_usb(bool (*handler)(uint8_t*)) {
+void usb_init(bool (*handler)(uint8_t*)) {
     packet_handler = handler;
     usbd_dev = usbd_init(&stm32f103_usb_driver, &device_descriptor,
                          &config_descriptor, usb_strings, sizeof(usb_strings),

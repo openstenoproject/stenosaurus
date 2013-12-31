@@ -43,7 +43,7 @@ static void clear_card_info(void) {
 }
 
 // Set up the GPIO pins and peripheral clocks for the SDIO peripheral.
-void init_sdio(void) {
+void sdio_init(void) {
     // Enable the clock for SDIO.
     rcc_peripheral_enable_clock(&RCC_AHBENR, RCC_AHBENR_SDIOEN);
     // Enable the clock for DMA2, which is the one connected to the SDIO.
@@ -346,8 +346,10 @@ bool sdio_read_block(uint32_t address, uint32_t *buffer) {
         return false;
     }
 
-    const uint32_t DATA_RX_ERROR_FLAGS = (SDIO_STA_STBITERR | SDIO_STA_RXOVERR |
-                                          SDIO_STA_DTIMEOUT | SDIO_STA_DCRCFAIL);
+    const uint32_t DATA_RX_ERROR_FLAGS = (SDIO_STA_STBITERR |
+                                          SDIO_STA_RXOVERR |
+                                          SDIO_STA_DTIMEOUT |
+                                          SDIO_STA_DCRCFAIL);
     const uint32_t DATA_RX_SUCCESS_FLAGS = (SDIO_STA_DBCKEND |
                                             SDIO_STA_DATAEND);
 
@@ -398,8 +400,10 @@ bool sdio_write_block(uint32_t address, uint32_t *buffer) {
     SDIO_DLEN = 512;
     SDIO_DCTRL = SDIO_DCTRL_DBLOCKSIZE_9 | SDIO_DCTRL_DMAEN | SDIO_DCTRL_DTEN;
 
-    const uint32_t DATA_TX_ERROR_FLAGS = (SDIO_STA_STBITERR | SDIO_STA_TXUNDERR
-                                          | SDIO_STA_DTIMEOUT | SDIO_STA_DCRCFAIL);
+    const uint32_t DATA_TX_ERROR_FLAGS = (SDIO_STA_STBITERR |
+                                          SDIO_STA_TXUNDERR |
+                                          SDIO_STA_DTIMEOUT |
+                                          SDIO_STA_DCRCFAIL);
     const uint32_t DATA_TX_SUCCESS_FLAGS = (SDIO_STA_DBCKEND |
                                             SDIO_STA_DATAEND);
 

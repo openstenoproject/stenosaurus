@@ -36,8 +36,8 @@ int main(void) {
 
     setup_user_button();
 
-    init_usb(packet_handler);
-    init_sdio();
+    usb_init(packet_handler);
+    sdio_init();
 
     uint32_t buffer[128];
 
