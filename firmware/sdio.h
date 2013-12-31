@@ -43,10 +43,10 @@ void sdio_send_command(uint32_t cmd, uint32_t arg);
 
 sdio_error_t get_command_result(void);
 
-uint8_t sdio_card_init(void);
+bool sdio_card_init(void);
 
-bool sdio_read_block(void);
+bool sdio_read_block(uint32_t address, uint32_t *buffer);
 
-bool sdio_write_block(void);
+bool sdio_write_block(uint32_t address, uint32_t *buffer);
 
 #endif // STENOSAURUS_FIRMWARE_SDIO_H

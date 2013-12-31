@@ -25,7 +25,6 @@
 #include <libopencm3/stm32/dma.h>
 #include "sdio.h"
 #include "clock.h"
-#include "debug.h"
 
 static struct {
 	// Relative Card Address, used when sending certain commands.
@@ -149,15 +148,8 @@ void sdio_power_down(void) {
 
 static sdio_error_t send_command_wait(uint32_t cmd, uint32_t arg) {
 	sdio_error_t result;
-	print_arg1("Sending command: ", cmd);
-	print_arg1("with arg: ", arg);
 	sdio_send_command(cmd, arg);
 	while ((result = get_command_result()) == SDIO_EINPROGRESS);
-	print_arg1("result: ", result);
-	print_arg1("response1: ", SDIO_RESP1);
-	print_arg1("response1: ", SDIO_RESP2);
-	print_arg1("response1: ", SDIO_RESP3);
-	print_arg1("response1: ", SDIO_RESP4);
 	return result;
 }
 
@@ -169,10 +161,6 @@ static sdio_error_t send_command_retry(uint32_t cmd, uint32_t arg) {
 		result = send_command_wait(cmd, arg);
 		if (result == SDIO_ESUCCESS) {
 			break;
-		}
-		else {
-			print_arg1("retrying ", cmd);
-			print_arg1("because ", result);
 		}
 	}
 	return result;
@@ -199,7 +187,7 @@ static sdio_error_t send_application_command(uint32_t cmd, uint32_t arg) {
 	return result;
 }
 
-uint8_t sdio_card_init(void) {
+bool sdio_card_init(void) {
 	clear_card_info();
 
 	bool card_present = (GPIOA_IDR & GPIO8) == 0;
@@ -212,7 +200,7 @@ uint8_t sdio_card_init(void) {
 
 	if (send_command_retry(0, 0) != SDIO_ESUCCESS) {
 		sdio_power_down();
-		return 2;
+		return false;
 	}
 
 	bool hcs;
@@ -223,7 +211,7 @@ uint8_t sdio_card_init(void) {
 		hcs = false;
 	} else {
 		sdio_power_down();
-		return 3;
+		return false;
 	}
 
     const uint32_t OCR_BUSY = 0x80000000;
@@ -243,12 +231,12 @@ uint8_t sdio_card_init(void) {
 	}
 	if (!acmd41_success) {
 		sdio_power_down();
-		return 4;
+		return false;
 	}
 
 	if (send_command_retry(2, 0) != SDIO_ESUCCESS) {
 		sdio_power_down();
-		return 5;
+		return false;
 	}
 
 	bool cmd3_success = false;
@@ -264,12 +252,12 @@ uint8_t sdio_card_init(void) {
 	}
 	if (!cmd3_success) {
 		sdio_power_down();
-		return 6;
+		return false;
 	}
 
 	if (send_command_retry(9, sd_card_info.rca << 16) != SDIO_ESUCCESS) {
 		sdio_power_down();
-		return 7;
+		return false;
 	}
 
 	// Get the size of the card from the CSD. There are two versions.
@@ -292,31 +280,25 @@ uint8_t sdio_card_init(void) {
 		sd_card_info.size = (c_size + 1) << 10;
 	} else {
 		sdio_power_down();
-		return 8;
+		return false;
 	}
 
 	if (sdio_select() != SDIO_ESUCCESS) {
 		sdio_power_down();
-		return 9;
+		return false;
 	}
-
-#if 0
 
 	// Tell the card to use a 4-width bus.
 	if (send_application_command(6, 2) != SDIO_ESUCCESS) {
 		sdio_power_down();
-		return 10;
+		return false;
 	}
 
 	// Set our side of the bus to be 4 wide and speed up the clock to 24Mhz.
-	SDIO_CLKCR = SDIO_CLKCR_CLKEN | SDIO_CLKCR_WIDBUS_4 | 118;
-#endif
+	SDIO_CLKCR = SDIO_CLKCR_CLKEN | SDIO_CLKCR_WIDBUS_4;
 
-	return 0;
+	return true;
 }
-
-// A block of 512 bytes.
-uint32_t block_transfer_buffer[128];
 
 bool wait_for_data_ready(void) {
 	uint32_t timeout = system_millis + 1000;
@@ -329,15 +311,17 @@ bool wait_for_data_ready(void) {
 	return false;
 }
 
-bool sdio_read_block(void) {
-	// TODO: remove temp code.
-	for (int i = 0; i < 128; ++i) {
-		block_transfer_buffer[i] = 0;
+bool sdio_read_block(uint32_t address, uint32_t *buffer) {
+	if (!wait_for_data_ready()) {
+		return false;
 	}
 
-	if (!wait_for_data_ready()) {
-		print("Timed out waiting\r\n");
-		return false;
+	if (!sd_card_info.ccs) {
+		address *= 512;
+
+		if (send_command_retry(16, 512) != SDIO_ESUCCESS) {
+			return false;
+		}
 	}
 
 	dma_channel_reset(DMA2, DMA_CHANNEL4);
@@ -347,11 +331,9 @@ bool sdio_read_block(void) {
 	dma_disable_peripheral_increment_mode(DMA2, DMA_CHANNEL4);
 	dma_set_read_from_peripheral(DMA2, DMA_CHANNEL4);
 	dma_set_peripheral_address(DMA2, DMA_CHANNEL4, (uint32_t)&SDIO_FIFO);
-	dma_set_memory_address(DMA2, DMA_CHANNEL4, (uint32_t)block_transfer_buffer);
+	dma_set_memory_address(DMA2, DMA_CHANNEL4, (uint32_t)buffer);
 	dma_set_number_of_data(DMA2, DMA_CHANNEL4, 128);
 	dma_enable_channel(DMA2, DMA_CHANNEL4);
-
-	// TODO: Send cmd16 when the card is sdsc. Also adjust address.
 
 	// A 100ms timeout expressed as ticks in the 24Mhz bus clock.
 	SDIO_DTIMER = 2400000;
@@ -364,47 +346,35 @@ bool sdio_read_block(void) {
 		return false;
 	}
 
-	const uint32_t DATA_RX_ERROR_FLAGS = (SDIO_STA_STBITERR | SDIO_STA_RXOVERR | SDIO_STA_DTIMEOUT | SDIO_STA_DCRCFAIL);
-	const uint32_t DATA_RX_SUCCESS_FLAGS = (SDIO_STA_DBCKEND | SDIO_STA_DATAEND);
+	const uint32_t DATA_RX_ERROR_FLAGS = (SDIO_STA_STBITERR | SDIO_STA_RXOVERR |
+		SDIO_STA_DTIMEOUT | SDIO_STA_DCRCFAIL);
+	const uint32_t DATA_RX_SUCCESS_FLAGS = (SDIO_STA_DBCKEND | 
+											SDIO_STA_DATAEND);
 
-	uint32_t next_second = system_millis + 1000;
 	while (true) {
 		uint32_t result = SDIO_STA;
 		if (result & (DATA_RX_SUCCESS_FLAGS | DATA_RX_ERROR_FLAGS)) {
 			if (result & DATA_RX_ERROR_FLAGS) {
-				print_arg1("sdio count: ", SDIO_DCOUNT);
-				print_arg1("sdio state: ", SDIO_STA);
-				print_arg1("dma state: ", DMA2_ISR);
-				print_arg1("dma count: ", DMA2_CNDTR4);
-				print_arg1("time: ", system_millis);
 				return false;
 			}
 			break;
 		}
-		if (system_millis > next_second) {
-			print_arg1("sdio count: ", SDIO_DCOUNT);
-			print_arg1("sdio state: ", SDIO_STA);
-			print_arg1("dma state: ", DMA2_ISR);
-			print_arg1("dma count: ", DMA2_CNDTR4);
-			print_arg1("time: ", system_millis);
-			next_second = system_millis + 1000;
-		}
 	}
-
-	print_arg1("first value read: ", block_transfer_buffer[0]);
 
 	return true;
 }
 
-bool sdio_write_block(void) {
-	// TODO: remove temp code.
-	for (int i = 0; i < 128; ++i) {
-		block_transfer_buffer[i] = 0xDEADBEEF;
+bool sdio_write_block(uint32_t address, uint32_t *buffer) {
+	if (!wait_for_data_ready()) {
+		return false;
 	}
 
-	if (!wait_for_data_ready()) {
-		print("Timed out waiting\r\n");
-		return false;
+	if (!sd_card_info.ccs) {
+		address *= 512;
+
+		if (send_command_retry(16, 512) != SDIO_ESUCCESS) {
+			return false;
+		}
 	}
 
 	dma_channel_reset(DMA2, DMA_CHANNEL4);
@@ -414,11 +384,9 @@ bool sdio_write_block(void) {
 	dma_disable_peripheral_increment_mode(DMA2, DMA_CHANNEL4);
 	dma_set_read_from_memory(DMA2, DMA_CHANNEL4);
 	dma_set_peripheral_address(DMA2, DMA_CHANNEL4, (uint32_t)&SDIO_FIFO);
-	dma_set_memory_address(DMA2, DMA_CHANNEL4, (uint32_t)block_transfer_buffer);
+	dma_set_memory_address(DMA2, DMA_CHANNEL4, (uint32_t)buffer);
 	dma_set_number_of_data(DMA2, DMA_CHANNEL4, 128);
 	dma_enable_channel(DMA2, DMA_CHANNEL4);
-
-	// TODO: Send cmd16 when the card is sdsc. Also adjust address.
 
 	if (send_command_wait(24, 0) != SDIO_ESUCCESS) {
 		return false;
@@ -430,30 +398,18 @@ bool sdio_write_block(void) {
 	SDIO_DLEN = 512;
 	SDIO_DCTRL = SDIO_DCTRL_DBLOCKSIZE_9 | SDIO_DCTRL_DMAEN | SDIO_DCTRL_DTEN;
 
-	const uint32_t DATA_TX_ERROR_FLAGS = (SDIO_STA_STBITERR | SDIO_STA_TXUNDERR | SDIO_STA_DTIMEOUT | SDIO_STA_DCRCFAIL);
-	const uint32_t DATA_TX_SUCCESS_FLAGS = (SDIO_STA_DBCKEND | SDIO_STA_DATAEND);
+	const uint32_t DATA_TX_ERROR_FLAGS = (SDIO_STA_STBITERR | SDIO_STA_TXUNDERR
+		| SDIO_STA_DTIMEOUT | SDIO_STA_DCRCFAIL);
+	const uint32_t DATA_TX_SUCCESS_FLAGS = (SDIO_STA_DBCKEND | 
+											SDIO_STA_DATAEND);
 
-	uint32_t next_second = system_millis + 1000;
 	while (true) {
 		uint32_t result = SDIO_STA;
 		if (result & (DATA_TX_SUCCESS_FLAGS | DATA_TX_ERROR_FLAGS)) {
 			if (result & DATA_TX_ERROR_FLAGS) {
-				print_arg1("sdio count: ", SDIO_DCOUNT);
-				print_arg1("sdio state: ", SDIO_STA);
-				print_arg1("dma state: ", DMA2_ISR);
-				print_arg1("dma count: ", DMA2_CNDTR4);
-				print_arg1("time: ", system_millis);
 				return false;
 			}
 			break;
-		}
-		if (system_millis > next_second) {
-			print_arg1("sdio count: ", SDIO_DCOUNT);
-			print_arg1("sdio state: ", SDIO_STA);
-			print_arg1("dma state: ", DMA2_ISR);
-			print_arg1("dma count: ", DMA2_CNDTR4);
-			print_arg1("time: ", system_millis);
-			next_second = system_millis + 1000;
 		}
 	}
 

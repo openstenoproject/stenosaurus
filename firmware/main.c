@@ -39,14 +39,33 @@ int main(void) {
     init_usb(packet_handler);
     init_sdio();
 
+    uint32_t buffer[128];
+
     while (true) {
         if (is_user_button_pressed()) {
-            print("Initializing card.\r\n");
-            print_arg1("Card initialization result: ", sdio_card_init());
-            print_arg1("write block: ", sdio_write_block());
-            print_arg1("read block: ", sdio_read_block());
-            print_arg1("time: ", system_millis);
+            uint32_t snapshot = system_millis;
+            print_arg1("time: ", snapshot);
 
+            print("Initializing card.\r\n");
+            if (!sdio_card_init()) {
+                print("Failed to initialize.\r\n");
+                continue;
+            }
+
+            buffer[0] = snapshot;
+
+            if (!sdio_write_block(0, buffer)) {
+                print("Failed to write.\r\n");
+                continue;
+            }
+
+            buffer[0] = 0;
+
+            if (!sdio_read_block(0, buffer)) {
+                print("Failed to read.\r\n");
+                continue;
+            }
+            print_arg1("word read: ", buffer[0]);
         }
 #if 0
         if (is_user_button_pressed()) {
