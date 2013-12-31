@@ -22,17 +22,13 @@
 #ifndef STENOSAURUS_FIRMWARE_SDIO_H
 #define STENOSAURUS_FIRMWARE_SDIO_H
 
+#include <stdint.h>
+
 typedef enum {
     SDIO_ESUCCESS = 1,
     SDIO_EINPROGRESS = 2,
     SDIO_ECTIMEOUT = 3,
     SDIO_ECCRCFAIL = 4,
-    //SDIO_ENORESP,
-    SDIO_EDCRCFAIL = 5,
-    SDIO_ERXOVERR = 6,
-    SDIO_ETXUNDER = 7,
-    SDIO_EBADCARD = 8,
-    SDIO_EUNKNOWN = 9,
 } sdio_error_t;
 
 void sdio_init(void);

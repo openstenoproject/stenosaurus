@@ -22,20 +22,16 @@
 // TODO: use a specific macro to go between addresses and pointer to make code
 // more portable.
 
-#include <stdbool.h>
-#include <stdint.h>
 #include "protocol.h"
+
 #include "../common/leds.h"
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/pwr.h>
+#include "debug.h"
 #include <libopencm3/stm32/f1/bkp.h>
 #include <libopencm3/stm32/gpio.h>
-#include "sdio.h"
-#include "debug.h"
-
-// TODO: remove later
-#include <libopencm3/stm32/sdio.h>
-
+#include <libopencm3/stm32/pwr.h>
+#include <libopencm3/stm32/rcc.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 static const uint8_t PACKET_SIZE = 64;
 

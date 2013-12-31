@@ -17,10 +17,10 @@
 //
 // See leds.h for interface documentation. See below for implementation details.
 
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/gpio.h>
-
 #include "leds.h"
+
+#include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/rcc.h>
 
 void setup_leds(void) {
     // Enable the clock to General Purpose Input Output port C.

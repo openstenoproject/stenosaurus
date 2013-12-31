@@ -22,8 +22,8 @@
 #ifndef STENOSAURUS_FIRMWARE_PROTOCOL_H
 #define STENOSAURUS_FIRMWARE_PROTOCOL_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // This function is called when there is a packet from the host. It will do
 // whatever is requested and will place the response in the same buffer. The

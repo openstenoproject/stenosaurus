@@ -28,16 +28,16 @@
 // - As an emergency backup there should be a manual way to enter the bootloader
 //   into firmware update mode.
 
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/cm3/scb.h>
-#include <libopencm3/stm32/f1/gpio.h>
-#include <libopencmsis/core_cm3.h>
-#include <libopencm3/stm32/crc.h>
-#include "usb.h"
 #include "../common/user_button.h"
-#include "protocol.h"
 #include "memorymap.h"
+#include "protocol.h"
+#include "usb.h"
+#include <libopencm3/cm3/scb.h>
+#include <libopencm3/stm32/crc.h>
 #include <libopencm3/stm32/f1/bkp.h>
+#include <libopencm3/stm32/f1/gpio.h>
+#include <libopencm3/stm32/rcc.h>
+#include <libopencmsis/core_cm3.h>
 
 __attribute__ ((noreturn))
 static void run_firmware(void) {
