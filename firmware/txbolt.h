@@ -17,7 +17,7 @@
 //
 // This file defines the interface for the serial transmit, or TX, protocol from
 // the Baron Online Transcriptor.
-// 
+//
 // See the .c file for implementation details.
 
 #ifndef STENOSAURUS_FIRMWARE_TXBOLT_H

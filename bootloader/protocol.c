@@ -34,8 +34,8 @@
 
 static bool erase_program(void) {
     flash_unlock();
-    for (uint32_t i = PROGRAM_AREA_BEGIN; i<= PROGRAM_AREA_END; 
-         i += PROGRAM_PAGE_SIZE) {
+    for (uint32_t i = PROGRAM_AREA_BEGIN; i<= PROGRAM_AREA_END;
+            i += PROGRAM_PAGE_SIZE) {
         flash_erase_page(i);
     }
     uint32_t *buf = (uint32_t*)PROGRAM_AREA_BEGIN;
@@ -105,7 +105,7 @@ static const char *device_info = "Stenosaurus has no info yet.";
 
 bool packet_handler(uint8_t *packet) {
     int action = packet[0];
-    
+
     if (action == REQUEST_INFO) {
         *(packet++) = RESPONSE_OK;
         *(packet++) = REQUEST_INFO;
@@ -151,7 +151,7 @@ bool packet_handler(uint8_t *packet) {
             return false;
         }
         uint32_t crc_result = crc_calculate_block((uint32_t*)PROGRAM_AREA_BEGIN,
-                                                  num_words);
+                              num_words);
         packet[0] = RESPONSE_OK;
         packet[1] = action;
         write_word(packet + 2, crc_result);
@@ -186,6 +186,6 @@ bool packet_handler(uint8_t *packet) {
     } else {
         make_error(packet, action);
     }
-    
+
     return false;
 }

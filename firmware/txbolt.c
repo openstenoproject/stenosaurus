@@ -51,7 +51,7 @@
 void make_packet(uint32_t s, packet *p) {
     p->length = 0;
     uint8_t page;
-    
+
     // Page 1: 00HWPKTS
     page = get_initial_s_stroke(s) |
            get_initial_t_stroke(s) << 1 |
@@ -74,7 +74,7 @@ void make_packet(uint32_t s, packet *p) {
     if (page) {
         p->byte[(p->length)++] = (page | 0b01000000);
     }
-    
+
     // Page 3: 10GLBPRF
     page = get_final_f_stroke(s) |
            get_final_r_stroke(s) << 1 |
@@ -85,7 +85,7 @@ void make_packet(uint32_t s, packet *p) {
     if (page) {
         p->byte[(p->length)++] = (page | 0b10000000);
     }
-    
+
     // Page 4: 110#ZDST
     page = get_final_t_stroke(s) |
            get_final_s_stroke(s) << 1 |
@@ -99,5 +99,5 @@ void make_packet(uint32_t s, packet *p) {
     // Zero any remaining bytes.
     for (int i = p->length; i < 5; ++i) {
         p->byte[i] = 0;
-     }
+    }
 }

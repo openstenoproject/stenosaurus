@@ -88,7 +88,7 @@ static const char *device_info = "Stenosaurus has no info yet.";
 
 bool packet_handler(uint8_t *packet) {
     int action = packet[0];
-    
+
     if (action == REQUEST_INFO) {
         *(packet++) = RESPONSE_OK;
         *(packet++) = REQUEST_INFO;
@@ -105,7 +105,7 @@ bool packet_handler(uint8_t *packet) {
         packet[2] = 0;
         zero(packet + 3, PACKET_SIZE - 3);
     } else if (action == REQUEST_RESET) {
-        rcc_peripheral_enable_clock(&RCC_APB1ENR, 
+        rcc_peripheral_enable_clock(&RCC_APB1ENR,
                                     RCC_APB1ENR_BKPEN | RCC_APB1ENR_PWREN);
         pwr_disable_backup_domain_write_protect();
 
@@ -128,6 +128,6 @@ bool packet_handler(uint8_t *packet) {
     } else {
         make_error(packet, action);
     }
-    
+
     return false;
 }

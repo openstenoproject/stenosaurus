@@ -30,7 +30,7 @@
 volatile uint32_t system_millis;
 
 void clock_init(void) {
-	// Set the clock to use the 8Mhz internal high speed (hsi) clock as input
+    // Set the clock to use the 8Mhz internal high speed (hsi) clock as input
     // and set the output of the PLL at 48Mhz. Since we're using USB we are
     // limited to two clock speeds: 48Mhz or 72Mhz.
     // TODO: The documentation for the chip says that HSE must be used for USB.
@@ -47,7 +47,7 @@ void clock_init(void) {
 // Implementing a function with this name makes it the handler for the systick
 // interrupt.
 void sys_tick_handler(void) {
-	++system_millis;
+    ++system_millis;
     if (system_millis == 0) {
         scb_reset_system();
     }
