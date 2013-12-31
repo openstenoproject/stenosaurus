@@ -17,9 +17,10 @@
 
 // TODO: Comment it up.
 
+#include "stroke.h"
+
 #include <inttypes.h>
 #include <stdbool.h>
-#include "stroke.h"
 
 uint32_t string_to_stroke(const char* s) {
     bool initial = true;

@@ -23,16 +23,18 @@
 // USB descriptors as more easily read structs, except for the HID description,
 // which uses a more complex and variable length encoding.
 
-#include <stdlib.h>
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/gpio.h>
-#include <libopencm3/usb/usbd.h>
-#include <libopencm3/usb/hid.h>
-#include <libopencm3/cm3/nvic.h>
-#include <libopencm3/usb/cdc.h>
 #include "usb.h"
+
+#include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/scb.h>
+#include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/rcc.h>
+#include <libopencm3/usb/cdc.h>
+#include <libopencm3/usb/hid.h>
+#include <libopencm3/usb/usbd.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 static const struct usb_device_descriptor device_descriptor = {
     // The size of this descriptor in bytes, 18.
@@ -42,12 +44,12 @@ static const struct usb_device_descriptor device_descriptor = {
     // This device supports USB 2.0
     .bcdUSB = 0x0200,
     // When cereating a multi-function device with more than one interface per
-    // logical function (as we are doing with the CDC interfaces below to create a
-    // virtual serial device) one  must use Interface Association Descriptors and
-    // the next three values must  be set to the exact values specified. The
+    // logical function (as we are doing with the CDC interfaces below to create
+    // a virtual serial device) one  must use Interface Association Descriptors
+    // and the next three values must  be set to the exact values specified. The
     // values have assigned meanings,  which are mentioned in the comments, but
-    // since they must be used when  using IADs that makes their given definitions
-    // meaningless. See
+    // since they must be used when  using IADs that makes their given
+    // definitions meaningless. See
     // http://www.usb.org/developers/docs/InterfaceAssociationDescriptor_ecn.pdf
     // and http://www.usb.org/developers/whitepapers/iadclasscode_r10.pdf
     .bDeviceClass = 0xEF, // Miscellaneous Device.
@@ -56,25 +58,25 @@ static const struct usb_device_descriptor device_descriptor = {
     // Packet size for endpoint zero in bytes.
     .bMaxPacketSize0 = 64,
     // The id of the vendor (VID) who makes this device. This must be a VID
-    // assigned by the USB-IF. The VID/PID combo must be unique to a product. For
-    // now, we will use a VID reserved for prototypes and an arbitrary PID.
+    // assigned by the USB-IF. The VID/PID combo must be unique to a product.
+    // For now, we will use a VID reserved for prototypes and an arbitrary PID.
     .idVendor = 0x6666, // VID reserved for prototypes
     // Product ID within the Vendor ID space. The current PID is arbitrary since
     // we're using the prototype VID.
     .idProduct = 0x1,
     // Version number for the device. Set to 1.0.0 for now.
     .bcdDevice = 0x0100,
-    // The index of the string in the string table that represents the name of the
-    // manufacturer of this device.
+    // The index of the string in the string table that represents the name of
+    // the manufacturer of this device.
     .iManufacturer = 1,
-    // The index of the string in the string table that represents the name of the
-    // product.
+    // The index of the string in the string table that represents the name of
+    // the product.
     .iProduct = 2,
     // The index of the string in the string table that represents the serial
     // number of this item in string form. Zero means there isn't one.
     .iSerialNumber = 0,
-    // The number of possible configurations this device has. This is one for most
-    // devices.
+    // The number of possible configurations this device has. This is one for
+    // most devices.
     .bNumConfigurations = 1,
 };
 
@@ -89,7 +91,8 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the IN side of endpoint 1.
         .bEndpointAddress = 0x81,
-        // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
+        // Bit 7-2 are only used in Isochronous mode, otherwise they should be
+        // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
         // 00: Control
         // 01: Isochronous
@@ -99,8 +102,8 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
         .bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
         // Maximum packet size.
         .wMaxPacketSize = 64,
-        // The frequency, in number of frames, that we're going to be sending data.
-        // Here we're saying we're going to send data every millisecond.
+        // The frequency, in number of frames, that we're going to be sending
+        // data. Here we're saying we're going to send data every millisecond.
         .bInterval = 1,
     },
     {
@@ -113,7 +116,8 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the OUT side of endpoint 1.
         .bEndpointAddress = 0x01,
-        // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
+        // Bit 7-2 are only used in Isochronous mode, otherwise they should be
+        // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
         // 00: Control
         // 01: Isochronous
@@ -123,8 +127,8 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
         .bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
         // Maximum packet size.
         .wMaxPacketSize = 64,
-        // The frequency, in number of frames, that we're going to be sending data.
-        // Here we're saying we're going to send data every millisecond.
+        // The frequency, in number of frames, that we're going to be sending
+        // data. Here we're saying we're going to send data every millisecond.
         .bInterval = 1,
     }
 };
@@ -144,7 +148,8 @@ static const uint8_t hid_report_descriptor[] = {
     0x19, 0x01,
     //   Usage Maximum. 64 input usages total (0x01 to 0x40).
     0x29, 0x40,
-    //   Logical Minimum (data bytes in the report may have minimum value = 0x00).
+    //   Logical Minimum (data bytes in the report may have minimum value =
+    //   0x00).
     0x15, 0x00,
     //   Logical Maximum (data bytes in the report may have
     //     maximum value = 0x00FF = unsigned 255).
@@ -152,8 +157,8 @@ static const uint8_t hid_report_descriptor[] = {
     0x26, 0xFF, 0x00,
     //   Report Size: 8-bit field size
     0x75, 0x08,
-    //   Report Count: Make sixty-four 8-bit fields (the next time the parser hits
-    //     an "Input", "Output", or "Feature" item).
+    //   Report Count: Make sixty-four 8-bit fields (the next time the parser
+    //     hits an "Input", "Output", or "Feature" item).
     0x95, 0x40,
     //   Input (Data, Array, Abs): Instantiates input packet fields based on the
     //     above report size, count, logical min/max, and usage.
@@ -244,7 +249,8 @@ static const struct usb_endpoint_descriptor cdc_comm_endpoints[] = {
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the IN side of endpoint 3.
         .bEndpointAddress = 0x83,
-        // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
+        // Bit 7-2 are only used in Isochronous mode, otherwise they should be
+        // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
         // 00: Control
         // 01: Isochronous
@@ -254,9 +260,10 @@ static const struct usb_endpoint_descriptor cdc_comm_endpoints[] = {
         .bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
         // Maximum packet size.
         .wMaxPacketSize = 16,
-        // The frequency, in number of frames, that we're going to be sending data.
-        // Here we're saying we're going to send data every 255 miliseconds. Since
-        // this endpoint is completely unused we use the largest interval possible.
+        // The frequency, in number of frames, that we're going to be sending
+        // data. Here we're saying we're going to send data every 255
+        // miliseconds. Since this endpoint is completely unused we use the
+        // largest interval possible.
         .bInterval = 255,
     }
 };
@@ -272,7 +279,8 @@ static const struct usb_endpoint_descriptor cdc_data_endpoints[] = {
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the OUT side of endpoint 2.
         .bEndpointAddress = 0x02,
-        // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
+        // Bit 7-2 are only used in Isochronous mode, otherwise they should be
+        // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
         // 00: Control
         // 01: Isochronous
@@ -295,7 +303,8 @@ static const struct usb_endpoint_descriptor cdc_data_endpoints[] = {
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the IN side of endpoint 2.
         .bEndpointAddress = 0x82,
-        // Bit 7-2 are only used in Isochronous mode, otherwise they should be 0.
+        // Bit 7-2 are only used in Isochronous mode, otherwise they should be
+        // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
         // 00: Control
         // 01: Isochronous
@@ -319,8 +328,8 @@ static const struct {
     .header = {
         // The size of the CDC header descriptor: 5.
         .bFunctionLength = sizeof(struct usb_cdc_header_descriptor),
-        // Class specific interface. i.e. the interface constant (4) with the class
-        // bit set making it 0x24 or 36.
+        // Class specific interface. i.e. the interface constant (4) with the
+        // class bit set making it 0x24 or 36.
         .bDescriptorType = CS_INTERFACE,
         // Setting this field to zero marks this as the beginning of a set of
         // descriptors describing this CDC device.
@@ -331,10 +340,11 @@ static const struct {
     .call_mgmt = {
         // The length of this descriptor: 5.
         .bFunctionLength = sizeof(struct usb_cdc_call_management_descriptor),
-        // Class specific interface. i.e. the interface constant (4) with the class
-        // bit set making it 0x24 or 36.
+        // Class specific interface. i.e. the interface constant (4) with the
+        // class bit set making it 0x24 or 36.
         .bDescriptorType = CS_INTERFACE,
-        // This descriptor defines call management for this communications device.
+        // This descriptor defines call management for this communications
+        // device.
         .bDescriptorSubtype = USB_CDC_TYPE_CALL_MANAGEMENT,
         // A value of zero indicates that the device does not handle call
         // management.
@@ -345,8 +355,8 @@ static const struct {
     .acm = {
         // The size of this descriptor: 4.
         .bFunctionLength = sizeof(struct usb_cdc_acm_descriptor),
-        // Class specific interface. i.e. the interface constant (4) with the class
-        // bit set making it 0x24 or 36.
+        // Class specific interface. i.e. the interface constant (4) with the
+        // class bit set making it 0x24 or 36.
         .bDescriptorType = CS_INTERFACE,
         // This descriptor defines which commands this device supports.
         .bDescriptorSubtype = USB_CDC_TYPE_ACM,
@@ -356,16 +366,17 @@ static const struct {
     .cdc_union = {
         // The length of this descriptor: 5.
         .bFunctionLength = sizeof(struct usb_cdc_union_descriptor),
-        // Class specific interface. i.e. the interface constant (4) with the class
-        // bit set making it 0x24 or 36.
+        // Class specific interface. i.e. the interface constant (4) with the
+        // class bit set making it 0x24 or 36.
         .bDescriptorType = CS_INTERFACE,
         // To quote the spec: "The Union functional descriptor describes the
-        // relationship between a group of interfaces that can be considered to form
-        // a functional unit. [...] One of the interfaces in the group is designated
-        // as a master or controlling interface for the group, and certain class-
-        // specific messages can be sent to this interface to act upon the group as
-        // a whole. Similarly, notifications for the entire group can be sent from
-        // this interface but apply to the entire group of interfaces."
+        // relationship between a group of interfaces that can be considered to
+        // form a functional unit. [...] One of the interfaces in the group is
+        // designated as a master or controlling interface for the group, and
+        // certain class- specific messages can be sent to this interface to act
+        // upon the group as a whole. Similarly, notifications for the entire
+        // group can be sent from this interface but apply to the entire group
+        // of interfaces."
         .bDescriptorSubtype = USB_CDC_TYPE_UNION,
         // The index of the control interface.
         .bControlInterface = 1,
@@ -385,9 +396,9 @@ static const struct usb_interface_descriptor cdc_comm_interface = {
     .bAlternateSetting = 0,
     // The number of endpoints in this interface.
     .bNumEndpoints = 1,
-    // The next three values theoretically have meaning but really they
-    // are just the hoops needed to be jumped through to implement a
-    // virtual serial device.
+    // The next three values theoretically have meaning but really they are just
+    // the hoops needed to be jumped through to implement a virtual serial
+    // device.
     // The interface class for this interface is CDC, indicated by 2.
     .bInterfaceClass = USB_CLASS_CDC,
     // The subclass indicates that this device uses the Abstract Control Model.
@@ -420,7 +431,8 @@ static const struct usb_interface_descriptor cdc_data_interface = {
     .bInterfaceClass = USB_CLASS_DATA,
     // There are no subclasses defined for the data class so it must be zero.
     .bInterfaceSubClass = 0,
-    // We are not using any class specific protocols for data so this is set to zero.
+    // We are not using any class specific protocols for data so this is set to
+    // zero.
     .bInterfaceProtocol = 0,
     // A string representing this interface. Zero means not provided.
     .iInterface = 0,
@@ -490,8 +502,8 @@ static const struct usb_config_descriptor config_descriptor = {
     // 5: This device supports remote wakeup.
     // 4-0: Must be set to 0.
     .bmAttributes = 0b10000000,
-    // The maximum amount of current that this device will draw in 2mA units. This
-    // indicates 100mA.
+    // The maximum amount of current that this device will draw in 2mA units.
+    // This indicates 100mA.
     .bMaxPower = 50,
     // The header ends here.
 
@@ -516,7 +528,8 @@ static int hid_control_request_handler(
     (void)dev;
     (void)complete;
 
-    // TODO: Check wIndex? I'm not sure if it needs to be zero or the interface index.
+    // TODO: Check wIndex? I'm not sure if it needs to be zero or the interface
+    // index.
     // The request is:
     // - device to host
     // - A standard request
@@ -552,9 +565,9 @@ static int cdcacm_control_request_handler(
 
     switch(req->bRequest) {
     case USB_CDC_REQ_SET_CONTROL_LINE_STATE: {
-        // The Linux cdc_acm driver requires this to be implemented
-        // even though it's optional in the CDC spec, and we don't
-        // advertise it in the ACM functional descriptor.
+        // The Linux cdc_acm driver requires this to be implemented even though
+        // it's optional in the CDC spec, and we don't advertise it in the ACM
+        // functional descriptor.
         return USBD_REQ_HANDLED;
     }
     case USB_CDC_REQ_SET_LINE_CODING:
@@ -570,11 +583,12 @@ static bool (*packet_handler)(uint8_t*);
 static uint8_t hid_buffer[64];
 
 static void hid_rx_callback(usbd_device *dev, uint8_t ep) {
-    uint16_t bytes_read = usbd_ep_read_packet(dev, ep, hid_buffer, sizeof(hid_buffer));
+    uint16_t bytes_read = usbd_ep_read_packet(
+                              dev, ep, hid_buffer, sizeof(hid_buffer));
     (void)bytes_read;
     // This function reads the packet and replaces it with the response buffer.
     bool reboot = packet_handler(hid_buffer);
-    // If we don't send the whole buffer then hidapi doesn't read the report. Not sure why.
+    // If we don't send the whole buffer then hidapi doesn't read the report.
     usbd_ep_write_packet(dev, 0x81, hid_buffer, sizeof(hid_buffer));
     if (reboot) {
         // Wait for the ack to be sent.

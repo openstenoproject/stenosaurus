@@ -20,11 +20,11 @@
 
 #include "clock.h"
 
-#include <stdlib.h>
-#include <stdint.h>
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/cm3/systick.h>
 #include <libopencm3/cm3/scb.h>
+#include <libopencm3/cm3/systick.h>
+#include <libopencm3/stm32/rcc.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 // Rolls over after ~49 days. If the device is on that long then it will reboot.
 volatile uint32_t system_millis;

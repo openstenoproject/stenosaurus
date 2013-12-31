@@ -18,13 +18,15 @@
 // This file implements the SDIO interface to the Stenosaurus. See the header
 // file for interface documentation to this code.
 
-#include <stdbool.h>
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/gpio.h>
-#include <libopencm3/stm32/sdio.h>
-#include <libopencm3/stm32/dma.h>
 #include "sdio.h"
+
 #include "clock.h"
+#include <libopencm3/stm32/dma.h>
+#include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/rcc.h>
+#include <libopencm3/stm32/sdio.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 static struct {
     // Relative Card Address, used when sending certain commands.
@@ -85,7 +87,7 @@ void sdio_init(void) {
 }
 
 // Send a command on the SDIO bus.
-void sdio_send_command(uint32_t cmd, uint32_t arg) {
+static void sdio_send_command(uint32_t cmd, uint32_t arg) {
     cmd &= SDIO_CMD_CMDINDEX_MSK;
     uint32_t waitresp = SDIO_CMD_WAITRESP_SHORT;
     if (cmd == 0) {
@@ -108,7 +110,7 @@ void sdio_send_command(uint32_t cmd, uint32_t arg) {
     SDIO_CMD = (cmd | SDIO_CMD_CPSMEN | waitresp);
 }
 
-sdio_error_t get_command_result(void) {
+static sdio_error_t get_command_result(void) {
     uint32_t status = SDIO_STA & 0xFFF;
 
     if (status & SDIO_STA_CMDACT) return SDIO_EINPROGRESS;
@@ -136,13 +138,13 @@ sdio_error_t get_command_result(void) {
     return SDIO_EUNKNOWN;
 }
 
-void sdio_power_up(void) {
+static void sdio_power_up(void) {
     SDIO_POWER = SDIO_POWER_PWRCTRL_PWRON;
     while (SDIO_POWER != SDIO_POWER_PWRCTRL_PWRON);
     SDIO_CLKCR = SDIO_CLKCR_CLKEN | 118;
 }
 
-void sdio_power_down(void) {
+static void sdio_power_down(void) {
     SDIO_POWER = SDIO_POWER_PWRCTRL_PWROFF;
 }
 
@@ -304,7 +306,7 @@ bool sdio_card_init(void) {
     return true;
 }
 
-bool wait_for_data_ready(void) {
+static bool wait_for_data_ready(void) {
     uint32_t timeout = system_millis + 1000;
     while (system_millis < timeout) {
         if (send_command_wait(13, sd_card_info.rca << 16) == SDIO_ESUCCESS &&

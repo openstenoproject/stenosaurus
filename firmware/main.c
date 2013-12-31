@@ -17,19 +17,19 @@
 //
 // This file is the main entry point for the stenosaurus firmware.
 
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/cm3/scb.h>
-#include <libopencm3/stm32/f1/gpio.h>
-#include <libopencmsis/core_cm3.h>
-#include <libopencm3/stm32/crc.h>
 #include "../common/user_button.h"
-#include "usb.h"
-#include "protocol.h"
-#include "stroke.h"
-#include "txbolt.h"
-#include "sdio.h"
 #include "clock.h"
 #include "debug.h"
+#include "protocol.h"
+#include "sdio.h"
+#include "stroke.h"
+#include "txbolt.h"
+#include "usb.h"
+#include <libopencm3/cm3/scb.h>
+#include <libopencm3/stm32/crc.h>
+#include <libopencm3/stm32/f1/gpio.h>
+#include <libopencm3/stm32/rcc.h>
+#include <libopencmsis/core_cm3.h>
 
 int main(void) {
     clock_init();
@@ -38,8 +38,6 @@ int main(void) {
 
     usb_init(packet_handler);
     sdio_init();
-
-    uint32_t buffer[128];
 
     bool card_initialized = false;
 

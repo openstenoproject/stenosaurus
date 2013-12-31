@@ -22,8 +22,8 @@
 
 #include "txbolt.h"
 
-#include <inttypes.h>
 #include "stroke.h"
+#include <inttypes.h>
 
 // In the TX Bolt protocol, there are four sets of keys grouped in order from
 // left to right. Each byte represents all the keys that were pressed in that

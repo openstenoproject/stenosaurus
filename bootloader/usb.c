@@ -24,15 +24,15 @@
 // USB descriptors as more easily read structs, except for the HID description,
 // which uses a more complex and variable encoding.
 
-#include <stdlib.h>
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/gpio.h>
-#include <libopencm3/usb/usbd.h>
-#include <libopencm3/usb/hid.h>
-#include <libopencm3/cm3/nvic.h>
 #include "usb.h"
+#include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/scb.h>
+#include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/rcc.h>
+#include <libopencm3/usb/hid.h>
+#include <libopencm3/usb/usbd.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 static const struct usb_device_descriptor device_descriptor = {
     // The size of this header in bytes, 18.

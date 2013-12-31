@@ -18,10 +18,10 @@
 // See user_button.h for interface documentation. See below for implementation
 // details.
 
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/gpio.h>
-
 #include "user_button.h"
+
+#include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/rcc.h>
 
 void setup_user_button(void) {
     // Enable clock to General Purpose Input Output port A (GPIOA).

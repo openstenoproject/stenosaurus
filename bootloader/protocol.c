@@ -22,15 +22,15 @@
 // TODO: use a specific macro to go between addresses and pointer to make code
 // more portable.
 
+#include "memorymap.h"
+#include "protocol.h"
+#include <libopencm3/stm32/crc.h>
+#include <libopencm3/stm32/f1/bkp.h>
+#include <libopencm3/stm32/flash.h>
+#include <libopencm3/stm32/pwr.h>
+#include <libopencm3/stm32/rcc.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "protocol.h"
-#include <libopencm3/stm32/flash.h>
-#include <libopencm3/stm32/crc.h>
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/pwr.h>
-#include <libopencm3/stm32/f1/bkp.h>
-#include "memorymap.h"
 
 static bool erase_program(void) {
     flash_unlock();
