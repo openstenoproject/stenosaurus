@@ -29,3 +29,6 @@
 application/stenosaurus
 
 .DS_Store
+
+# Before files formatted by astyle.
+*.orig

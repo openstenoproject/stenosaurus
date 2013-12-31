@@ -15,19 +15,38 @@
 // You should have received a copy of the GNU General Public License along with
 // this library.  If not, see <http://www.gnu.org/licenses/>.
 //
-// This file defines the communication protocol of the firmware.
+// This file defines the SDIO interface for the firmware.
 //
 // See the .c file for implementation details.
 
-#ifndef STENOSAURUS_FIRMWARE_PROTOCOL_H
-#define STENOSAURUS_FIRMWARE_PROTOCOL_H
+#ifndef STENOSAURUS_FIRMWARE_SDIO_H
+#define STENOSAURUS_FIRMWARE_SDIO_H
 
-#include <stdint.h>
-#include <stdbool.h>
+typedef enum {
+    SDIO_ESUCCESS = 1,
+    SDIO_EINPROGRESS = 2,
+    SDIO_ECTIMEOUT = 3,
+    SDIO_ECCRCFAIL = 4,
+    //SDIO_ENORESP,
+    SDIO_EDCRCFAIL = 5,
+    SDIO_ERXOVERR = 6,
+    SDIO_ETXUNDER = 7,
+    SDIO_EBADCARD = 8,
+    SDIO_EUNKNOWN = 9,
+} sdio_error_t;
 
-// This function is called when there is a packet from the host. It will do
-// whatever is requested and will place the response in the same buffer. The
-// buffer must be at least 64 bytes long.
-bool packet_handler(uint8_t *packet);
+void init_sdio(void);
 
-#endif // STENOSAURUS_FIRMWARE_PROTOCOL_H
+void sdio_power_up(void);
+
+void sdio_send_command(uint32_t cmd, uint32_t arg);
+
+sdio_error_t get_command_result(void);
+
+bool sdio_card_init(void);
+
+bool sdio_read_block(uint32_t address, uint32_t *buffer);
+
+bool sdio_write_block(uint32_t address, uint32_t *buffer);
+
+#endif // STENOSAURUS_FIRMWARE_SDIO_H
