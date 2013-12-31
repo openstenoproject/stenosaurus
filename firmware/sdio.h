@@ -37,6 +37,8 @@ typedef enum {
 
 void sdio_init(void);
 
+bool sdio_card_present(void);
+
 bool sdio_card_init(void);
 
 bool sdio_read_block(uint32_t address, uint32_t *buffer);

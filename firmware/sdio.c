@@ -187,6 +187,10 @@ static sdio_error_t send_application_command(uint32_t cmd, uint32_t arg) {
     return result;
 }
 
+bool sdio_card_present(void) {
+    return (GPIOA_IDR & GPIO8) == 0;
+}
+
 bool sdio_card_init(void) {
     clear_card_info();
 

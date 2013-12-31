@@ -41,32 +41,26 @@ int main(void) {
 
     uint32_t buffer[128];
 
+    bool card_initialized = false;
+
     while (true) {
-        if (is_user_button_pressed()) {
-            uint32_t snapshot = system_millis;
-            print_arg1("time: ", snapshot);
+        if (sdio_card_present() && !card_initialized) {
+            print("Card detected.\r\n");
 
-            print("Initializing card.\r\n");
             if (!sdio_card_init()) {
-                print("Failed to initialize.\r\n");
+                print("Card not initialized.\r\n\r\n");
                 continue;
             }
 
-            buffer[0] = snapshot;
+            print("Initialized card.\r\n\r\n");
 
-            if (!sdio_write_block(0, buffer)) {
-                print("Failed to write.\r\n");
-                continue;
-            }
-
-            buffer[0] = 0;
-
-            if (!sdio_read_block(0, buffer)) {
-                print("Failed to read.\r\n");
-                continue;
-            }
-            print_arg1("word read: ", buffer[0]);
+            card_initialized = true;
         }
+        if (!sdio_card_present() && card_initialized) {
+            print("Card removed.\r\n\r\n");
+            card_initialized = false;
+        }
+
 #if 0
         if (is_user_button_pressed()) {
             packet txbolt_packet;
