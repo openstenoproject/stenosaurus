@@ -147,7 +147,17 @@ bool send_reset(hid_device *handle, bool bootloader) {
 }
 
 bool connect(hid_device** handle) {
-    *handle = hid_open(STENOSAURUS_VID, STENOSAURUS_PID, NULL);
+    struct hid_device_info *list = hid_enumerate(STENOSAURUS_VID, 
+                                                 STENOSAURUS_PID);
+    struct hid_device_info *next = list;
+    while (next != NULL) {
+        if (next->usage_page == 0xFF00) {
+            *handle = hid_open_path(next->path);
+            break;
+        }
+        next = next->next;
+    }
+    hid_free_enumeration(list);
     return *handle != 0;
 }
 
