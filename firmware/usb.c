@@ -17,11 +17,6 @@
 //
 // This file implements the USB interface to the Stenosaurus. See the header
 // file for interface documentation to this code.
-//
-// It just so happens that Arm Cortex-M3 processors are little-endian and the
-// USB descriptors need to be little endian too. This allows us to define our
-// USB descriptors as more easily read structs, except for the HID description,
-// which uses a more complex and variable length encoding.
 
 #include "usb.h"
 
@@ -36,6 +31,44 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "../common/leds.h"
+
+
+enum {
+    INTERFACE_RAW_HID = 0,
+    // The next two must be consecutive since they are used in an Interface
+    // Assication below. If the order is changed then the IAD must be changed as
+    // well
+    INTERFACE_CDC_COMM = 1,
+    INTERFACE_CDC_DATA = 2,
+    INTERFACE_KEYBOARD_HID = 3,
+    INTERFACE_COUNT = 4,
+};
+
+enum {
+    ENDPOINT_RAW_HID_IN = 0x81,
+    ENDPOINT_RAW_HID_OUT = 0x01,
+    ENDPOINT_CDC_COMM_IN = 0x83,
+    ENDPOINT_CDC_DATA_IN = 0x82,
+    ENDPOINT_CDC_DATA_OUT = 0x02,
+    ENDPOINT_KEYBOARD_HID_IN = 0x84,
+};
+
+enum {
+    HID_GET_REPORT = 1,
+    HID_GET_IDLE = 2,
+    HID_GET_PROTOCOL = 3,
+    HID_SET_REPORT = 9,
+    HID_SET_IDLE = 10,
+    HID_SET_PROTOCOL = 11,
+};
+
+// It just so happens that Arm Cortex-M3 processors are little-endian and the
+// USB descriptors need to be little endian too. This allows us to define our
+// USB descriptors as more easily read structs (compared to byte arrays), except
+// for the HID description, which uses a more complex and variable length
+// encoding.
+
 static const struct usb_device_descriptor device_descriptor = {
     // The size of this descriptor in bytes, 18.
     .bLength = USB_DT_DEVICE_SIZE,
@@ -46,9 +79,9 @@ static const struct usb_device_descriptor device_descriptor = {
     // When cereating a multi-function device with more than one interface per
     // logical function (as we are doing with the CDC interfaces below to create
     // a virtual serial device) one  must use Interface Association Descriptors
-    // and the next three values must  be set to the exact values specified. The
-    // values have assigned meanings,  which are mentioned in the comments, but
-    // since they must be used when  using IADs that makes their given
+    // and the next three values must be set to the exact values specified. The
+    // values have assigned meanings, which are mentioned in the comments, but
+    // since they must be used when using IADs that makes their given
     // definitions meaningless. See
     // http://www.usb.org/developers/docs/InterfaceAssociationDescriptor_ecn.pdf
     // and http://www.usb.org/developers/whitepapers/iadclasscode_r10.pdf
@@ -80,7 +113,7 @@ static const struct usb_device_descriptor device_descriptor = {
     .bNumConfigurations = 1,
 };
 
-static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
+static const struct usb_endpoint_descriptor raw_hid_interface_endpoints[] = {
     {
         // The size of the endpoint descriptor in bytes: 7.
         .bLength = USB_DT_ENDPOINT_SIZE,
@@ -90,7 +123,7 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
         // Bits 6-4 must be set to 0.
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the IN side of endpoint 1.
-        .bEndpointAddress = 0x81,
+        .bEndpointAddress = ENDPOINT_RAW_HID_IN,
         // Bit 7-2 are only used in Isochronous mode, otherwise they should be
         // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
@@ -104,7 +137,7 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
         .wMaxPacketSize = 64,
         // The frequency, in number of frames, that we're going to be sending
         // data. Here we're saying we're going to send data every millisecond.
-        .bInterval = 1,
+        .bInterval = 10,
     },
     {
         // The size of the endpoint descriptor in bytes: 7.
@@ -115,7 +148,7 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
         // Bits 6-4 must be set to 0.
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the OUT side of endpoint 1.
-        .bEndpointAddress = 0x01,
+        .bEndpointAddress = ENDPOINT_RAW_HID_OUT,
         // Bit 7-2 are only used in Isochronous mode, otherwise they should be
         // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
@@ -129,7 +162,7 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
         .wMaxPacketSize = 64,
         // The frequency, in number of frames, that we're going to be sending
         // data. Here we're saying we're going to send data every millisecond.
-        .bInterval = 1,
+        .bInterval = 10,
     }
 };
 
@@ -137,7 +170,7 @@ static const struct usb_endpoint_descriptor hid_interface_endpoints[] = {
 // indicates the number of bytes that follow in the lower two bits. The next two
 // bits indicate the type of the item. The remaining four bits indicate the tag.
 // Words are stored in little endian.
-static const uint8_t hid_report_descriptor[] = {
+static const uint8_t raw_hid_report_descriptor[] = {
     // Usage Page = 0xFF00 (Vendor Defined Page 1)
     0x06, 0x00, 0xFF,
     // Usage (Vendor Usage 1)
@@ -181,10 +214,10 @@ static const struct {
         uint8_t bReportDescriptorType;
         uint16_t wDescriptorLength;
     } __attribute__((packed)) hid_report;
-} __attribute__((packed)) hid_function = {
+} __attribute__((packed)) raw_hid_function = {
     .hid_descriptor = {
         // The size of this header in bytes: 9.
-        .bLength = sizeof(hid_function),
+        .bLength = sizeof(raw_hid_function),
         // The type of this descriptor. HID is indicated by the value 33.
         .bDescriptorType = USB_DT_HID,
         // The version of the HID spec used in binary coded  decimal. We are
@@ -202,17 +235,17 @@ static const struct {
         // The type of descriptor. A value of 34 indicates a report.
         .bReportDescriptorType = USB_DT_REPORT,
         // The size of the descriptor defined above.
-        .wDescriptorLength = sizeof(hid_report_descriptor),
+        .wDescriptorLength = sizeof(raw_hid_report_descriptor),
     },
 };
 
-const struct usb_interface_descriptor hid_interface = {
+const struct usb_interface_descriptor raw_hid_interface = {
     // The size of an interface descriptor: 9
     .bLength = USB_DT_INTERFACE_SIZE,
     // A value of 4 specifies that this describes and interface.
     .bDescriptorType = USB_DT_INTERFACE,
     // The number for this interface. Starts counting from 0.
-    .bInterfaceNumber = 0,
+    .bInterfaceNumber = INTERFACE_RAW_HID,
     // The number for this alternate setting for this interface.
     .bAlternateSetting = 0,
     // The number of endpoints in this interface.
@@ -228,14 +261,14 @@ const struct usb_interface_descriptor hid_interface = {
     // The header ends here.
 
     // A pointer to the beginning of the array of endpoints.
-    .endpoint = hid_interface_endpoints,
+    .endpoint = raw_hid_interface_endpoints,
 
     // Some class types require extra data in the interface descriptor.
     // The libopencm3 usb library requires that we stuff that here.
     // Pointer to the buffer holding the extra data.
-    .extra = &hid_function,
+    .extra = &raw_hid_function,
     // The length of the data at the above address.
-    .extralen = sizeof(hid_function),
+    .extralen = sizeof(raw_hid_function),
 };
 
 static const struct usb_endpoint_descriptor cdc_comm_endpoints[] = {
@@ -248,7 +281,7 @@ static const struct usb_endpoint_descriptor cdc_comm_endpoints[] = {
         // Bits 6-4 must be set to 0.
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the IN side of endpoint 3.
-        .bEndpointAddress = 0x83,
+        .bEndpointAddress = ENDPOINT_CDC_COMM_IN,
         // Bit 7-2 are only used in Isochronous mode, otherwise they should be
         // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
@@ -278,7 +311,7 @@ static const struct usb_endpoint_descriptor cdc_data_endpoints[] = {
         // Bits 6-4 must be set to 0.
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the OUT side of endpoint 2.
-        .bEndpointAddress = 0x02,
+        .bEndpointAddress = ENDPOINT_CDC_DATA_OUT,
         // Bit 7-2 are only used in Isochronous mode, otherwise they should be
         // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
@@ -302,7 +335,7 @@ static const struct usb_endpoint_descriptor cdc_data_endpoints[] = {
         // Bits 6-4 must be set to 0.
         // Bits 3-0 indicate the endpoint number (zero is not allowed).
         // Here we define the IN side of endpoint 2.
-        .bEndpointAddress = 0x82,
+        .bEndpointAddress = ENDPOINT_CDC_DATA_IN,
         // Bit 7-2 are only used in Isochronous mode, otherwise they should be
         // 0.
         // Bit 1-0: Indicates the mode of this endpoint.
@@ -350,7 +383,7 @@ static const struct {
         // management.
         .bmCapabilities = 0,
         // This is the index of the data class interface.
-        .bDataInterface = 2,
+        .bDataInterface = INTERFACE_CDC_DATA,
     },
     .acm = {
         // The size of this descriptor: 4.
@@ -391,7 +424,7 @@ static const struct usb_interface_descriptor cdc_comm_interface = {
     // A value of 4 specifies that this describes and interface.
     .bDescriptorType = USB_DT_INTERFACE,
     // The number for this interface. Starts counting from 0.
-    .bInterfaceNumber = 1,
+    .bInterfaceNumber = INTERFACE_CDC_COMM,
     // The number for this alternate setting for this interface.
     .bAlternateSetting = 0,
     // The number of endpoints in this interface.
@@ -422,7 +455,7 @@ static const struct usb_interface_descriptor cdc_data_interface = {
     // A value of 4 specifies that this describes and interface.
     .bDescriptorType = USB_DT_INTERFACE,
     // The number for this interface. Starts counting from 0.
-    .bInterfaceNumber = 2,
+    .bInterfaceNumber = INTERFACE_CDC_DATA,
     // The number for this alternate setting for this interface.
     .bAlternateSetting = 0,
     // The number of endpoints in this interface.
@@ -450,7 +483,7 @@ static const struct usb_iface_assoc_descriptor cdc_acm_interface_association = {
     // association.
     .bDescriptorType = USB_DT_INTERFACE_ASSOCIATION,
     // The first interface that is part of this group.
-    .bFirstInterface = 1,
+    .bFirstInterface = INTERFACE_CDC_COMM,
     // The number of included interfaces. This implies that the bundled
     // interfaces must be continugous.
     .bInterfaceCount = 2,
@@ -465,10 +498,136 @@ static const struct usb_iface_assoc_descriptor cdc_acm_interface_association = {
     .iFunction = 0,
 };
 
+// The endpoint for the keyboard interface.
+static const struct usb_endpoint_descriptor keyboard_hid_interface_endpoint = {
+    // The size of the endpoint descriptor in bytes: 7.
+    .bLength = USB_DT_ENDPOINT_SIZE,
+    // A value of 5 indicates that this describes an endpoint.
+    .bDescriptorType = USB_DT_ENDPOINT,
+    // Bit 7 indicates direction: 0 for OUT (to device) 1 for IN (to host).
+    // Bits 6-4 must be set to 0.
+    // Bits 3-0 indicate the endpoint number (zero is not allowed).
+    // Here we define the IN side of endpoint 4.
+    .bEndpointAddress = ENDPOINT_KEYBOARD_HID_IN,
+    // Bit 7-2 are only used in Isochronous mode, otherwise they should be
+    // 0.
+    // Bit 1-0: Indicates the mode of this endpoint.
+    // 00: Control
+    // 01: Isochronous
+    // 10: Bulk
+    // 11: Interrupt
+    // Here we're using interrupt.
+    .bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
+    // Maximum packet size.
+    .wMaxPacketSize = 8,
+    // The frequency, in number of frames, that we're going to be sending
+    // data. Here we're saying we're going to send data every millisecond.
+    .bInterval = 10,
+};
+
+// Keyboard Protocol 1, HID 1.11 spec, Appendix B, page 59-60
+static uint8_t keyboard_hid_report_descriptor[] = {
+    0x05, 0x01, // Usage Page (Generic Desktop),
+    0x09, 0x06, // Usage (Keyboard),
+    0xA1, 0x01, // Collection (Application),
+    0x75, 0x01, //   Report Size (1),
+    0x95, 0x08, //   Report Count (8),
+    0x05, 0x07, //   Usage Page (Key Codes),
+    0x19, 0xE0, //   Usage Minimum (224),
+    0x29, 0xE7, //   Usage Maximum (231),
+    0x15, 0x00, //   Logical Minimum (0),
+    0x25, 0x01, //   Logical Maximum (1),
+    0x81, 0x02, //   Input (Data, Variable, Absolute),  ;Modifier byte
+    0x95, 0x01, //   Report Count (1),
+    0x75, 0x08, //   Report Size (8),
+    0x81, 0x03, //   Input (Constant),                  ;Reserved byte
+    0x95, 0x05, //   Report Count (5),
+    0x75, 0x01, //   Report Size (1),
+    0x05, 0x08, //   Usage Page (LEDs),
+    0x19, 0x01, //   Usage Minimum (1),
+    0x29, 0x05, //   Usage Maximum (5),
+    0x91, 0x02, //   Output (Data, Variable, Absolute), ;LED report
+    0x95, 0x01, //   Report Count (1),
+    0x75, 0x03, //   Report Size (3),
+    0x91, 0x03, //   Output (Constant),                 ;LED report padding
+    0x95, 0x06, //   Report Count (6),
+    0x75, 0x08, //   Report Size (8),
+    0x15, 0x00, //   Logical Minimum (0),
+    0x25, 0x68, //   Logical Maximum(104),
+    0x05, 0x07, //   Usage Page (Key Codes),
+    0x19, 0x00, //   Usage Minimum (0),
+    0x29, 0x68, //   Usage Maximum (104),
+    0x81, 0x00, //   Input (Data, Array),
+    0xc0        // End Collection
+};
+
+static const struct {
+    struct usb_hid_descriptor hid_descriptor;
+    struct {
+        uint8_t bReportDescriptorType;
+        uint16_t wDescriptorLength;
+    } __attribute__((packed)) hid_report;
+} __attribute__((packed)) keyboard_hid_function = {
+    .hid_descriptor = {
+        // The size of this header in bytes: 9.
+        .bLength = sizeof(raw_hid_function),
+        // The type of this descriptor. HID is indicated by the value 33.
+        .bDescriptorType = USB_DT_HID,
+        // The version of the HID spec used in binary coded  decimal. We are
+        // using version 1.11.
+        .bcdHID = 0x0111,
+        // Some HID devices, like keyboards, can specify different country
+        // codes. A value of zero means not localized.
+        .bCountryCode = 0,
+        // The number of descriptors that follow. This must be at least one
+        // since there should be at least a report descriptor.
+        .bNumDescriptors = 1,
+    },
+    // The report descriptor.
+    .hid_report = {
+        // The type of descriptor. A value of 34 indicates a report.
+        .bReportDescriptorType = USB_DT_REPORT,
+        // The size of the descriptor defined above.
+        .wDescriptorLength = sizeof(keyboard_hid_report_descriptor),
+    },
+};
+
+const struct usb_interface_descriptor keyboard_hid_interface = {
+    // The size of an interface descriptor: 9
+    .bLength = USB_DT_INTERFACE_SIZE,
+    // A value of 4 specifies that this describes and interface.
+    .bDescriptorType = USB_DT_INTERFACE,
+    // The number for this interface. Starts counting from 0.
+    .bInterfaceNumber = INTERFACE_KEYBOARD_HID,
+    // The number for this alternate setting for this interface.
+    .bAlternateSetting = 0,
+    // The number of endpoints in this interface.
+    .bNumEndpoints = 1,
+    // The interface class for this interface is HID, defined by 3.
+    .bInterfaceClass = USB_CLASS_HID,
+    // The interface subclass for an HID device is used to indicate of this is a
+    // mouse or keyboard that is boot mode capable (1) or not (0).
+    .bInterfaceSubClass = 1, // A boot compatible device.
+    .bInterfaceProtocol = 1, // A keyboard.
+    // A string representing this interface. Zero means not provided.
+    .iInterface = 0,
+    // The header ends here.
+
+    // A pointer to the beginning of the array of endpoints.
+    .endpoint = &keyboard_hid_interface_endpoint,
+
+    // Some class types require extra data in the interface descriptor.
+    // The libopencm3 usb library requires that we stuff that here.
+    // Pointer to the buffer holding the extra data.
+    .extra = &keyboard_hid_function,
+    // The length of the data at the above address.
+    .extralen = sizeof(keyboard_hid_function),
+};
+
 const struct usb_interface interfaces[] = {
     {
         .num_altsetting = 1,
-        .altsetting = &hid_interface,
+        .altsetting = &raw_hid_interface,
     },
     {
         .num_altsetting = 1,
@@ -478,6 +637,10 @@ const struct usb_interface interfaces[] = {
     {
         .num_altsetting = 1,
         .altsetting = &cdc_data_interface,
+    },
+    {
+        .num_altsetting = 1,
+        .altsetting = &keyboard_hid_interface,
     },
 };
 
@@ -491,7 +654,7 @@ static const struct usb_config_descriptor config_descriptor = {
     // libopencm3.
     .wTotalLength = 0,
     // The number of interfaces in this configuration.
-    .bNumInterfaces = 3,
+    .bNumInterfaces = INTERFACE_COUNT,
     // The index of this configuration. Starts counting from 1.
     .bConfigurationValue = 1,
     // A string index describing this configration. Zero means not provided.
@@ -501,6 +664,7 @@ static const struct usb_config_descriptor config_descriptor = {
     // 6: This device is self powered.
     // 5: This device supports remote wakeup.
     // 4-0: Must be set to 0.
+    // TODO: Add remote wakeup.
     .bmAttributes = 0b10000000,
     // The maximum amount of current that this device will draw in 2mA units.
     // This indicates 100mA.
@@ -517,9 +681,9 @@ static const char *usb_strings[] = {
     "Stenosaurus",
 };
 
-// This adds support for the additional control requests needed for the HID
+// This adds support for the additional control requests needed for the raw HID
 // interface.
-static int hid_control_request_handler(
+static int raw_hid_control_request_handler(
     usbd_device *dev,
     struct usb_setup_data *req,
     uint8_t **buf,
@@ -528,23 +692,25 @@ static int hid_control_request_handler(
     (void)dev;
     (void)complete;
 
-    // TODO: Check wIndex? I'm not sure if it needs to be zero or the interface
-    // index.
-    // The request is:
-    // - device to host
-    // - A standard request
-    // - recipient is an interface
-    // Note: This function is only registered for
-    // USB_REQ_TYPE_IN | USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE
-    if (// - GetDescriptor
-        (req->bRequest == USB_REQ_GET_DESCRIPTOR) &&
+    // This request is asking for information sent to the host using request
+    // GET_DESCRIPTOR.
+    if ((req->bmRequestType & USB_REQ_TYPE_DIRECTION) == USB_REQ_TYPE_IN &&
+        (req->bRequest == USB_REQ_GET_DESCRIPTOR)) {
+
         // - High byte: Descriptor type is HID report (0x22)
         // - Low byte: Index 0
-        (req->wValue == 0x2200)) {
-        // Send the HID report descriptor.
-        *buf = (uint8_t *)hid_report_descriptor;
-        *len = sizeof(hid_report_descriptor);
-        return USBD_REQ_HANDLED;
+        if (req->wValue == 0x2200) {
+            // Send the HID report descriptor.
+            *buf = (uint8_t *)raw_hid_report_descriptor;
+            *len = sizeof(raw_hid_report_descriptor);
+            return USBD_REQ_HANDLED;
+        } else if (req->wValue == 0x2100) {
+            *buf = (uint8_t *)&raw_hid_function;
+            *len = sizeof(raw_hid_function);
+            return USBD_REQ_HANDLED;
+        }
+
+        return USBD_REQ_NOTSUPP;
     }
 
     return USBD_REQ_NOTSUPP;
@@ -563,20 +729,127 @@ static int cdcacm_control_request_handler(
     (void)buf;
     (void)complete;
 
-    switch(req->bRequest) {
-    case USB_CDC_REQ_SET_CONTROL_LINE_STATE: {
+    if (req->bRequest == USB_CDC_REQ_SET_CONTROL_LINE_STATE) {
         // The Linux cdc_acm driver requires this to be implemented even though
         // it's optional in the CDC spec, and we don't advertise it in the ACM
         // functional descriptor.
         return USBD_REQ_HANDLED;
-    }
-    case USB_CDC_REQ_SET_LINE_CODING:
+    } else if (req->bRequest == USB_CDC_REQ_SET_LINE_CODING) {    
         if(*len < sizeof(struct usb_cdc_line_coding)) {
             return USBD_REQ_NOTSUPP;
         }
         return USBD_REQ_HANDLED;
     }
+
     return USBD_REQ_NOTSUPP;
+}
+
+static struct {
+    uint8_t modifiers;
+    uint8_t reserved;
+    uint8_t keys[6];
+} key_report;
+
+static uint8_t keyboard_idle = 0;
+
+// 0 is boot protocol and 1 is report protocol.
+static uint8_t keyboard_protocol = 1;
+
+static uint8_t keyboard_leds = 0;
+
+static int keyboard_hid_control_request_handler(
+    usbd_device *dev,
+    struct usb_setup_data *req,
+    uint8_t **buf,
+    uint16_t *len,
+    void (**complete)(usbd_device *, struct usb_setup_data *)) {
+
+    (void)dev;
+    (void)complete;
+
+    // This request is asking for information sent to the host using request
+    // GET_DESCRIPTOR.
+    if ((req->bmRequestType & USB_REQ_TYPE_DIRECTION) == USB_REQ_TYPE_IN) {
+        if ((req->bmRequestType & USB_REQ_TYPE_TYPE) == USB_REQ_TYPE_STANDARD) {
+            if (req->bRequest == USB_REQ_GET_DESCRIPTOR) {
+                // - High byte: Descriptor type is HID report (0x22)
+                // - Low byte: Index 0
+                if (req->wValue == 0x2200) {
+                    // Send the HID report descriptor.
+                    *buf = (uint8_t *)keyboard_hid_report_descriptor;
+                    *len = sizeof(keyboard_hid_report_descriptor);
+                    return USBD_REQ_HANDLED;
+                } else if (req->wValue == 0x2100) {
+                    *buf = (uint8_t *)&keyboard_hid_function;
+                    *len = sizeof(keyboard_hid_function);
+                    return USBD_REQ_HANDLED;
+                }
+
+                return USBD_REQ_NOTSUPP;
+            }
+        } else if ((req->bmRequestType & USB_REQ_TYPE_TYPE) == 
+                   USB_REQ_TYPE_CLASS) {
+            if (req->bRequest == HID_GET_REPORT) {
+                *buf = (uint8_t*)&key_report;
+                *len = sizeof(key_report);
+                return USBD_REQ_HANDLED;
+            } else if (req->bRequest == HID_GET_IDLE) {
+                *buf = &keyboard_idle;
+                *len = sizeof(keyboard_idle);
+                return USBD_REQ_HANDLED;
+            } else if (req->bRequest == HID_GET_PROTOCOL) {
+                *buf = &keyboard_protocol;
+                *len = sizeof(keyboard_protocol);
+                return USBD_REQ_HANDLED;
+            }
+            
+            return USBD_REQ_NOTSUPP;
+        }
+    } else { // IN requests
+        if ((req->bmRequestType & USB_REQ_TYPE_TYPE) == USB_REQ_TYPE_CLASS) {
+            if (req->bRequest == HID_SET_REPORT) {
+                if (*len == 1) {
+                    keyboard_leds = (*buf)[0];
+                }
+                return USBD_REQ_HANDLED;
+            } else if (req->bRequest == HID_SET_IDLE) {
+                keyboard_idle = req->wValue >> 8;
+                return USBD_REQ_HANDLED;
+            } else if (req->bRequest == HID_SET_PROTOCOL) {
+                keyboard_protocol = req->wValue;
+                return USBD_REQ_HANDLED;
+            }
+        }
+
+        return USBD_REQ_NOTSUPP;
+    }
+
+    return USBD_REQ_NOTSUPP;
+}
+
+// This function is called when the target is an interface.
+static int interface_control_request_handler(
+    usbd_device *dev,
+    struct usb_setup_data *req,
+    uint8_t **buf,
+    uint16_t *len,
+    void (**complete)(usbd_device *, struct usb_setup_data *)) {
+
+    if (req->wIndex == INTERFACE_RAW_HID) {
+        return raw_hid_control_request_handler(dev, req, buf, len, complete);
+    }
+
+    if (req->wIndex == INTERFACE_CDC_COMM) {
+        return cdcacm_control_request_handler(dev, req, buf, len, complete);
+    }
+
+    if (req->wIndex == INTERFACE_KEYBOARD_HID) {
+        return keyboard_hid_control_request_handler(
+            dev, req, buf, len, complete);
+    }
+
+    // This handler didn't handle this command, try the next one.
+    return USBD_REQ_NEXT_CALLBACK;
 }
 
 static bool (*packet_handler)(uint8_t*);
@@ -610,49 +883,44 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
     // the host or out to the device (0 for out, 1 for in).
     // HID endpoints:
     // Set up endpoint 1 for data going IN to the host.
-    usbd_ep_setup(dev, 0x81, USB_ENDPOINT_ATTR_INTERRUPT, 64, NULL);
+    usbd_ep_setup(
+        dev, ENDPOINT_RAW_HID_IN, USB_ENDPOINT_ATTR_INTERRUPT, 64, NULL);
     // Set up endpoint 1 for data coming OUT from the host.
-    usbd_ep_setup(dev, 0x01, USB_ENDPOINT_ATTR_INTERRUPT, 64, hid_rx_callback);
+    usbd_ep_setup(dev, 
+                  ENDPOINT_RAW_HID_OUT, 
+                  USB_ENDPOINT_ATTR_INTERRUPT, 
+                  64, 
+                  hid_rx_callback);
     // CDC endpoints:
     // OUT endpoint for data.
-    usbd_ep_setup(dev, 0x02, USB_ENDPOINT_ATTR_BULK, 64, NULL);
+    usbd_ep_setup(dev, ENDPOINT_CDC_DATA_OUT, USB_ENDPOINT_ATTR_BULK, 64, NULL);
     // IN endpoint for data.
-    usbd_ep_setup(dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, NULL);
+    usbd_ep_setup(dev, ENDPOINT_CDC_DATA_IN, USB_ENDPOINT_ATTR_BULK, 64, NULL);
     // Useless IN endpoint for comm.
     // TODO: Can this be smaller?
-    usbd_ep_setup(dev, 0x83, USB_ENDPOINT_ATTR_INTERRUPT, 16, NULL);
+    usbd_ep_setup(
+        dev, ENDPOINT_CDC_COMM_IN, USB_ENDPOINT_ATTR_INTERRUPT, 8, NULL);
 
-    // This callback is registered for requests that are:
-    // - device to host
-    // - of type standard
-    // - the recipient is an interface
+    usbd_ep_setup(dev, 
+                  ENDPOINT_KEYBOARD_HID_IN, 
+                  USB_ENDPOINT_ATTR_INTERRUPT, 
+                  sizeof(key_report), 
+                  NULL);
+
+    // This callback is registered for requests that are sent to an interface.
     // It does this by applying the mask to bmRequestType and making sure it is
-    // equal to the value.
+    // equal to the supplied value.
     usbd_register_control_callback(
         dev,
-        // This is the value.
-        USB_REQ_TYPE_IN | USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE,
-        // This is the mask.
-        USB_REQ_TYPE_DIRECTION | USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
-        // The callback function
-        hid_control_request_handler);
-
-    // This callback is registered for requests that are:
-    // - of type class
-    // - the recipient is an interface
-    usbd_register_control_callback(dev,
-                                   // The value
-                                   USB_REQ_TYPE_CLASS | USB_REQ_TYPE_INTERFACE,
-                                   // The mask
-                                   USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
-                                   // The callback function
-                                   cdcacm_control_request_handler);
+        USB_REQ_TYPE_INTERFACE, // Mask
+        USB_REQ_TYPE_RECIPIENT, // Value
+        interface_control_request_handler); // Callback
 }
 
 // The buffer used for control requests. This needs to be big enough to hold any
 // descriptor, the largest of which will be the configuration descriptor.
-// TODO: confirm this is big enough with a USB analyzer.
-static uint8_t usbd_control_buffer[128];
+// TODO: confirm this is big enough by printing out totallen in the config descriptor.
+static uint8_t usbd_control_buffer[256];  // TODO: 236 is my current estimate.
 
 // Structure holding all the info related to the usb device.
 static usbd_device *usbd_dev;
@@ -678,7 +946,18 @@ void usb_init(bool (*handler)(uint8_t*)) {
 }
 
 uint32_t serial_usb_send_data(void *buf, int len) {
-    return usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
+    return usbd_ep_write_packet(usbd_dev, ENDPOINT_CDC_DATA_IN, buf, len);
+}
+
+void usb_keyboard_press(uint8_t key, uint8_t modifiers) {
+    key_report.modifiers = modifiers;
+    key_report.keys[0] = key;
+    while (usbd_ep_write_packet(usbd_dev, ENDPOINT_KEYBOARD_HID_IN, &key_report, sizeof(key_report)) == 0);
+    led_toggle(1);
+    key_report.modifiers = 0;
+    key_report.keys[0] = 0;
+    while (usbd_ep_write_packet(usbd_dev, ENDPOINT_KEYBOARD_HID_IN, &key_report, sizeof(key_report)) == 0);
+    led_toggle(2);
 }
 
 // This is the interrupt handler for low priority USB events. Implementing a

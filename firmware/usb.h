@@ -32,4 +32,6 @@ void usb_init(bool (*)(uint8_t*));
 
 uint32_t serial_usb_send_data(void *buf, int len);
 
+void usb_keyboard_press(uint8_t key, uint8_t modifiers);
+
 #endif // STENOSAURUS_FIRMWARE_USB_H

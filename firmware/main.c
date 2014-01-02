@@ -31,17 +31,26 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencmsis/core_cm3.h>
 
+#include "../common/leds.h"
+
 int main(void) {
     clock_init();
 
     setup_user_button();
 
-    usb_init(packet_handler);
-    sdio_init();
+    setup_leds();
 
-    bool card_initialized = false;
+    usb_init(packet_handler);
+    //sdio_init();
+
+    //bool card_initialized = false;
 
     while (true) {
+        if (is_user_button_pressed()) {
+            led_toggle(0);
+            usb_keyboard_press(4, 0);
+        }
+#if 0
         if (sdio_card_present() && !card_initialized) {
             print("Card detected.\r\n");
 
@@ -58,6 +67,7 @@ int main(void) {
             print("Card removed.\r\n\r\n");
             card_initialized = false;
         }
+#endif
 
 #if 0
         if (is_user_button_pressed()) {
