@@ -27,7 +27,7 @@ void print(char* str) {
         b++;
         len++;
     }
-    while (serial_usb_send_data(str, len) == 0);
+    while (usb_send_serial_data(str, len) == 0);
 }
 
 static char nibble_to_hex_char(uint8_t b) {

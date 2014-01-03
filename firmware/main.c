@@ -30,18 +30,55 @@
 #include <libopencm3/stm32/f1/gpio.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencmsis/core_cm3.h>
+#include "keyboard.h"
+
+#include "../common/leds.h"
 
 int main(void) {
     clock_init();
 
     setup_user_button();
 
-    usb_init(packet_handler);
-    sdio_init();
+    setup_leds();
 
-    bool card_initialized = false;
+    usb_init(packet_handler);
+    //sdio_init();
+
+    //bool card_initialized = false;
+
+    bool pressed = false;
 
     while (true) {
+        if (is_user_button_pressed()) {
+            if (!pressed) {
+                led_toggle(0);
+                usb_keyboard_key_down(KEY_Q);
+                usb_keyboard_key_down(KEY_W);
+                usb_keyboard_key_down(KEY_E);
+                usb_keyboard_key_down(KEY_R);
+                usb_keyboard_key_down(KEY_U);
+                usb_keyboard_key_down(KEY_I);
+                usb_keyboard_key_down(KEY_O);
+                usb_keyboard_key_down(KEY_P);
+                pressed = true;                
+            }
+        } else {
+            if (pressed) {
+                usb_keyboard_key_up(KEY_Q);
+                usb_keyboard_key_up(KEY_W);
+                usb_keyboard_key_up(KEY_E);
+                usb_keyboard_key_up(KEY_R);
+                usb_keyboard_key_up(KEY_U);
+                usb_keyboard_key_up(KEY_I);
+                usb_keyboard_key_up(KEY_O);
+                usb_keyboard_key_up(KEY_P);
+                led_toggle(0);
+                pressed = false;                
+            }
+        }
+        usb_send_keys_if_changed();
+
+#if 0
         if (sdio_card_present() && !card_initialized) {
             print("Card detected.\r\n");
 
@@ -58,6 +95,7 @@ int main(void) {
             print("Card removed.\r\n\r\n");
             card_initialized = false;
         }
+#endif
 
 #if 0
         if (is_user_button_pressed()) {

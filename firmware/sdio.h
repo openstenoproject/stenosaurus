@@ -22,6 +22,7 @@
 #ifndef STENOSAURUS_FIRMWARE_SDIO_H
 #define STENOSAURUS_FIRMWARE_SDIO_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum {
@@ -29,6 +30,7 @@ typedef enum {
     SDIO_EINPROGRESS = 2,
     SDIO_ECTIMEOUT = 3,
     SDIO_ECCRCFAIL = 4,
+    SDIO_EUNKNOWN = 5,
 } sdio_error_t;
 
 void sdio_init(void);
