@@ -54,12 +54,24 @@ int main(void) {
                 led_toggle(0);
                 usb_keyboard_key_down(KEY_Q);
                 usb_keyboard_key_down(KEY_W);
+                usb_keyboard_key_down(KEY_E);
+                usb_keyboard_key_down(KEY_R);
+                usb_keyboard_key_down(KEY_U);
+                usb_keyboard_key_down(KEY_I);
+                usb_keyboard_key_down(KEY_O);
+                usb_keyboard_key_down(KEY_P);
                 pressed = true;                
             }
         } else {
             if (pressed) {
                 usb_keyboard_key_up(KEY_Q);
                 usb_keyboard_key_up(KEY_W);
+                usb_keyboard_key_up(KEY_E);
+                usb_keyboard_key_up(KEY_R);
+                usb_keyboard_key_up(KEY_U);
+                usb_keyboard_key_up(KEY_I);
+                usb_keyboard_key_up(KEY_O);
+                usb_keyboard_key_up(KEY_P);
                 led_toggle(0);
                 pressed = false;                
             }
