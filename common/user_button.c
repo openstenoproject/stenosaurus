@@ -53,6 +53,9 @@ bool is_user_button_pressed(void) {
         return true;
     } else if (debounce > 0 && debounce < DEBOUNCE_TICKS) {
         ++debounce;
+        return true;
+    } else if (pressed && debounce == DEBOUNCE_TICKS) {
+        return true;
     } else if (!pressed && debounce == DEBOUNCE_TICKS) {
         ++debounce;
     } else if (debounce > DEBOUNCE_TICKS && debounce < 2*DEBOUNCE_TICKS) {

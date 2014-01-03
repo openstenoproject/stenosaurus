@@ -30,6 +30,7 @@
 #include <libopencm3/stm32/f1/gpio.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencmsis/core_cm3.h>
+#include "keyboard.h"
 
 #include "../common/leds.h"
 
@@ -45,11 +46,26 @@ int main(void) {
 
     //bool card_initialized = false;
 
+    bool pressed = false;
+
     while (true) {
         if (is_user_button_pressed()) {
-            led_toggle(0);
-            usb_keyboard_press(4, 0);
+            if (!pressed) {
+                led_toggle(0);
+                usb_keyboard_key_down(KEY_Q);
+                usb_keyboard_key_down(KEY_W);
+                pressed = true;                
+            }
+        } else {
+            if (pressed) {
+                usb_keyboard_key_up(KEY_Q);
+                usb_keyboard_key_up(KEY_W);
+                led_toggle(0);
+                pressed = false;                
+            }
         }
+        usb_send_keys_if_changed();
+
 #if 0
         if (sdio_card_present() && !card_initialized) {
             print("Card detected.\r\n");

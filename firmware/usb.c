@@ -31,9 +31,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "../common/leds.h"
-
-
 enum {
     INTERFACE_RAW_HID = 0,
     // The next two must be consecutive since they are used in an Interface
@@ -519,17 +516,18 @@ static const struct usb_endpoint_descriptor keyboard_hid_interface_endpoint = {
     // Here we're using interrupt.
     .bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
     // Maximum packet size.
-    .wMaxPacketSize = 8,
+    .wMaxPacketSize = 32,
     // The frequency, in number of frames, that we're going to be sending
     // data. Here we're saying we're going to send data every millisecond.
     .bInterval = 10,
 };
 
-// Keyboard Protocol 1, HID 1.11 spec, Appendix B, page 59-60
+// NKRO Keyboard. Uses a 32 byte report.
 static uint8_t keyboard_hid_report_descriptor[] = {
     0x05, 0x01, // Usage Page (Generic Desktop),
     0x09, 0x06, // Usage (Keyboard),
     0xA1, 0x01, // Collection (Application),
+    // Bitmap of modifiers
     0x75, 0x01, //   Report Size (1),
     0x95, 0x08, //   Report Count (8),
     0x05, 0x07, //   Usage Page (Key Codes),
@@ -538,9 +536,16 @@ static uint8_t keyboard_hid_report_descriptor[] = {
     0x15, 0x00, //   Logical Minimum (0),
     0x25, 0x01, //   Logical Maximum (1),
     0x81, 0x02, //   Input (Data, Variable, Absolute),  ;Modifier byte
-    0x95, 0x01, //   Report Count (1),
-    0x75, 0x08, //   Report Size (8),
-    0x81, 0x03, //   Input (Constant),                  ;Reserved byte
+    // Bitmap of keys
+    0x95, 0xF8, //   Report Count (248),
+    0x75, 0x01, //   Report Size (1),
+    0x15, 0x00, //   Logical Minimum (0),
+    0x25, 0x01, //   Logical Maximum(1),
+    0x05, 0x07, //   Usage Page (Key Codes),
+    0x19, 0x00, //   Usage Minimum (0),
+    0x29, 0xF7, //   Usage Maximum (247),
+    0x81, 0x02, //   Input (Data, Variable, Absolute),
+    // Led output report
     0x95, 0x05, //   Report Count (5),
     0x75, 0x01, //   Report Size (1),
     0x05, 0x08, //   Usage Page (LEDs),
@@ -550,15 +555,7 @@ static uint8_t keyboard_hid_report_descriptor[] = {
     0x95, 0x01, //   Report Count (1),
     0x75, 0x03, //   Report Size (3),
     0x91, 0x03, //   Output (Constant),                 ;LED report padding
-    0x95, 0x06, //   Report Count (6),
-    0x75, 0x08, //   Report Size (8),
-    0x15, 0x00, //   Logical Minimum (0),
-    0x25, 0x68, //   Logical Maximum(104),
-    0x05, 0x07, //   Usage Page (Key Codes),
-    0x19, 0x00, //   Usage Minimum (0),
-    0x29, 0x68, //   Usage Maximum (104),
-    0x81, 0x00, //   Input (Data, Array),
-    0xc0        // End Collection
+    0xc0 // End Collection
 };
 
 static const struct {
@@ -748,7 +745,11 @@ static struct {
     uint8_t modifiers;
     uint8_t reserved;
     uint8_t keys[6];
-} key_report;
+} boot_key_report;
+
+uint8_t nkro_key_report[32];
+
+static bool key_state_chaged;
 
 static uint8_t keyboard_idle = 0;
 
@@ -790,8 +791,8 @@ static int keyboard_hid_control_request_handler(
         } else if ((req->bmRequestType & USB_REQ_TYPE_TYPE) == 
                    USB_REQ_TYPE_CLASS) {
             if (req->bRequest == HID_GET_REPORT) {
-                *buf = (uint8_t*)&key_report;
-                *len = sizeof(key_report);
+                *buf = (uint8_t*)&boot_key_report;
+                *len = sizeof(boot_key_report);
                 return USBD_REQ_HANDLED;
             } else if (req->bRequest == HID_GET_IDLE) {
                 *buf = &keyboard_idle;
@@ -904,7 +905,7 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
     usbd_ep_setup(dev, 
                   ENDPOINT_KEYBOARD_HID_IN, 
                   USB_ENDPOINT_ATTR_INTERRUPT, 
-                  sizeof(key_report), 
+                  32, 
                   NULL);
 
     // This callback is registered for requests that are sent to an interface.
@@ -919,8 +920,8 @@ static void set_config_handler(usbd_device *dev, uint16_t wValue) {
 
 // The buffer used for control requests. This needs to be big enough to hold any
 // descriptor, the largest of which will be the configuration descriptor.
-// TODO: confirm this is big enough by printing out totallen in the config descriptor.
-static uint8_t usbd_control_buffer[256];  // TODO: 236 is my current estimate.
+// TODO: Figure out how big this really needs to be.
+static uint8_t usbd_control_buffer[256];
 
 // Structure holding all the info related to the usb device.
 static usbd_device *usbd_dev;
@@ -945,19 +946,78 @@ void usb_init(bool (*handler)(uint8_t*)) {
                   GPIO0);
 }
 
-uint32_t serial_usb_send_data(void *buf, int len) {
+uint32_t usb_send_serial_data(void *buf, int len) {
     return usbd_ep_write_packet(usbd_dev, ENDPOINT_CDC_DATA_IN, buf, len);
 }
 
-void usb_keyboard_press(uint8_t key, uint8_t modifiers) {
-    key_report.modifiers = modifiers;
-    key_report.keys[0] = key;
-    while (usbd_ep_write_packet(usbd_dev, ENDPOINT_KEYBOARD_HID_IN, &key_report, sizeof(key_report)) == 0);
-    led_toggle(1);
-    key_report.modifiers = 0;
-    key_report.keys[0] = 0;
-    while (usbd_ep_write_packet(usbd_dev, ENDPOINT_KEYBOARD_HID_IN, &key_report, sizeof(key_report)) == 0);
-    led_toggle(2);
+void usb_keyboard_keys_up() {
+    for (size_t i = 0; i < sizeof(nkro_key_report); ++i) {
+        nkro_key_report[i] = 0;
+    }
+    key_state_chaged = true;
+}
+
+void usb_keyboard_key_up(uint8_t usb_keycode) {
+    uint8_t bit = usb_keycode % 8;
+    uint8_t byte = (usb_keycode / 8) + 1;
+
+    if (usb_keycode >= 240 && usb_keycode <= 247) {
+        nkro_key_report[0] &= ~(1 << bit);
+    }
+    else if (byte > 0 && byte < sizeof(nkro_key_report)) {
+        nkro_key_report[byte] &= ~(1 << bit);
+    }
+    key_state_chaged = true;
+}
+
+void usb_keyboard_key_down(uint8_t usb_keycode) {
+    uint8_t bit = usb_keycode % 8;
+    uint8_t byte = (usb_keycode / 8) + 1;
+
+    if (usb_keycode >= 240 && usb_keycode <= 247) {
+        nkro_key_report[0] |= (1 << bit);
+    }
+    else if (byte > 0 && byte < sizeof(nkro_key_report)) {
+        nkro_key_report[byte] |= (1 << bit);
+    }
+    key_state_chaged = true;
+}
+
+uint32_t usb_send_keys_if_changed(void) {
+    if (!key_state_chaged) return 0;
+    key_state_chaged = false;
+    return usb_send_keyboard_report();
+}
+
+uint32_t usb_send_keyboard_report(void) {
+    if (keyboard_protocol) {
+        return usbd_ep_write_packet(
+            usbd_dev, ENDPOINT_KEYBOARD_HID_IN, &nkro_key_report, 32);
+    } else {
+        // Convert to boot report.
+        int nkeys = 0;
+        boot_key_report.modifiers = nkro_key_report[0];
+        for (size_t i = 1; i < sizeof(nkro_key_report); ++i) {
+            if (nkro_key_report[i]) {
+                for (int j = 0; j < 8; ++j) {
+                    if ((nkro_key_report[i] >> (7 - j)) & 1) {
+                        if (nkeys < 6) {
+                            boot_key_report.keys[nkeys] = (i * 8) + j;
+                        } else {
+                            for (int k = 0; k < 6; ++k) {
+                                boot_key_report.keys[k] = 1; // Error rollover.
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return usbd_ep_write_packet(usbd_dev, 
+                                    ENDPOINT_KEYBOARD_HID_IN, 
+                                    &boot_key_report, 
+                                    sizeof(boot_key_report));
+    }
 }
 
 // This is the interrupt handler for low priority USB events. Implementing a
