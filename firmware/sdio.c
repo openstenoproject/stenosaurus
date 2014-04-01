@@ -348,7 +348,7 @@ bool sdio_read_block(uint32_t address, uint32_t *buffer) {
     SDIO_DCTRL = SDIO_DCTRL_DBLOCKSIZE_9 | SDIO_DCTRL_DMAEN |
                  SDIO_DCTRL_DTDIR | SDIO_DCTRL_DTEN;
 
-    if (send_command_wait(17, 0) != SDIO_ESUCCESS) {
+    if (send_command_wait(17, address) != SDIO_ESUCCESS) {
         return false;
     }
 
@@ -396,7 +396,7 @@ bool sdio_write_block(uint32_t address, uint32_t *buffer) {
     dma_set_number_of_data(DMA2, DMA_CHANNEL4, 128);
     dma_enable_channel(DMA2, DMA_CHANNEL4);
 
-    if (send_command_wait(24, 0) != SDIO_ESUCCESS) {
+    if (send_command_wait(24, address) != SDIO_ESUCCESS) {
         return false;
     }
 
